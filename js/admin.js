@@ -16,7 +16,7 @@ import {
   normalizePassword,
   b64encode,
 } from "./crypto.js";
-import { fetchJSON, fetchBytes, metaExists, sortWeeks, isoWeekId, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_CYCLE } from "./store.js";
+import { fetchJSON, fetchBytes, metaExists, sortWeeks, isoWeekId, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER } from "./store.js";
 import { $, el, clear, toast, confirmModal, copyText, setBusy } from "./ui.js";
 import { runWizard, createStudent, emptyStudentBlob, emptyAcademyBlob, printCodeCards } from "./setup.js";
 import { publishToGitHub, guessRepoFromLocation } from "./github.js";
@@ -589,31 +589,67 @@ function renderStudentsTab(container) {
 async function reissueCode(st) {
   const ok = await confirmModal({
     title: "코드 재발급",
-    body: `${st.name} 학생의 접속 코드를 새로 만듭니다. 기존 코드는 더 이상 사용할 수 없습니다. (데이터는 유지됩니다)`,
+    body:
+      `${st.name} 학생의 접속 코드를 새로 만듭니다. 기존 코드는 더 이상 사용할 수 없습니다. ` +
+      `(데이터와 분석 PDF는 새 코드로 다시 암호화되어 유지됩니다)\n\n` +
+      `주의: 재발급 후에는 ZIP 수동 업로드가 아닌 'GitHub에 발행(자동 커밋)'을 사용해야 ` +
+      `이전 파일이 서버에서 삭제되어 유출된 코드로 접근할 수 없게 됩니다.`,
     okText: "재발급",
   });
   if (!ok) return;
-  const blob = S.students.get(st.fileId);
-  const oldFileId = st.fileId;
-  const code = generateCode();
-  const { fileId, aesKey } = await deriveStudentKeys(code, S.meta.saltStudent, S.meta.kdf.iterStudent);
-  st.code = code;
-  st.fileId = fileId;
-  st.encKey = await exportAesKeyB64(aesKey);
-  S.students.delete(oldFileId);
-  S.students.set(fileId, blob);
-  S.dirtyStudents.delete(oldFileId);
-  S.pendingDeletes.add(`data/s/${oldFileId}.json`);
-  markStudent(fileId);
-  markRoster();
-  toast(`새 코드: ${code} — 카드를 다시 인쇄해 전달하세요.`, "ok");
+  setBusy(contentEl, "분석 PDF를 새 코드로 다시 암호화하는 중…");
+  try {
+    const blob = S.students.get(st.fileId);
+    const oldFileId = st.fileId;
+    const oldKey = await importAesKeyB64(st.encKey);
+
+    // 1) gather: 이 학생의 모든 분석 PDF 평문을 먼저 확보 —
+    //    하나라도 실패하면 아무것도 바꾸지 않는다 (구 키 유실 방지)
+    const gathered = [];
+    for (const wd of Object.values(blob.weeks || {})) {
+      const pdf = wd.reportPdf;
+      if (!pdf) continue;
+      const pending = S.pendingUploads.get(pdf.path);
+      const bytes = pending
+        ? pending.bytes
+        : new Uint8Array(await decryptBytes(oldKey, await fetchBytes(pdf.path)));
+      gathered.push({ pdf, wasPending: !!pending, bytes });
+    }
+
+    // 2) commit: 새 키 유도 후 일괄 반영
+    const code = generateCode();
+    const { fileId, aesKey } = await deriveStudentKeys(code, S.meta.saltStudent, S.meta.kdf.iterStudent);
+    st.code = code;
+    st.fileId = fileId;
+    st.encKey = await exportAesKeyB64(aesKey);
+    S.students.delete(oldFileId);
+    S.students.set(fileId, blob);
+    S.dirtyStudents.delete(oldFileId);
+    S.pendingDeletes.add(`data/s/${oldFileId}.json`);
+    for (const g of gathered) {
+      if (g.wasPending) S.pendingUploads.delete(g.pdf.path);
+      else S.pendingDeletes.add(g.pdf.path);
+      g.pdf.path = `data/m/${randomHexId(16)}.bin`;
+      S.pendingUploads.set(g.pdf.path, { bytes: g.bytes, studentFileId: fileId });
+    }
+    markStudent(fileId);
+    markRoster();
+    toast(`새 코드: ${code} — 카드를 다시 인쇄해 전달하세요.`, "ok");
+  } catch (e) {
+    console.error(e);
+    toast("재발급 실패: " + e.message + " (변경된 것은 없습니다)", "error");
+  }
   renderTab();
 }
 
 async function deleteStudent(st) {
   const ok = await confirmModal({
     title: "학생 삭제",
-    body: `${st.name} 학생을 완전히 삭제합니다. 이 학생의 모든 기록이 사라지고, 보안을 위해 소속 학원의 암호화 키가 교체됩니다(공지·자료 재암호화). 발행해야 적용됩니다.`,
+    body:
+      `${st.name} 학생을 완전히 삭제합니다. 이 학생의 모든 기록과 분석 PDF가 삭제되고, ` +
+      `보안을 위해 소속 학원의 암호화 키가 교체됩니다(공지·자료 재암호화).\n\n` +
+      `발행해야 적용되며, ZIP 수동 업로드가 아닌 'GitHub에 발행(자동 커밋)'을 사용해야 ` +
+      `이전 파일이 서버에서 삭제됩니다.`,
     okText: "삭제",
     danger: true,
   });
@@ -621,6 +657,14 @@ async function deleteStudent(st) {
   setBusy(contentEl, "학원 키를 교체하고 자료를 재암호화하는 중…");
   try {
     const academyFileId = st.academyFileId;
+    // 이 학생의 분석 PDF 정리 (blob 제거 전에 경로를 확보해야 함)
+    const blob = S.students.get(st.fileId);
+    for (const wd of Object.values(blob?.weeks || {})) {
+      const pdf = wd.reportPdf;
+      if (!pdf) continue;
+      if (S.pendingUploads.has(pdf.path)) S.pendingUploads.delete(pdf.path);
+      else S.pendingDeletes.add(pdf.path);
+    }
     S.roster.students = S.roster.students.filter((x) => x.fileId !== st.fileId);
     S.students.delete(st.fileId);
     S.dirtyStudents.delete(st.fileId);
@@ -636,12 +680,16 @@ async function deleteStudent(st) {
 }
 
 // 학원 키 교체: 새 키/파일ID 생성, 자료 재암호화, 소속 학생 blob 갱신
+// 주의: 학생 개인 키로 암호화된 분석 PDF(studentFileId 대상)는 절대 건드리지 않는다.
 async function rotateAcademyKey(oldFileId) {
   const entry = S.roster.academies.find((a) => a.fileId === oldFileId);
   const blob = S.academies.get(oldFileId);
   const oldKey = await importAesKeyB64(entry.key);
+  const newFileId = randomHexId(16);
+  const newKey = randomKeyB64();
 
-  // 기존 자료를 평문으로 확보 (미발행 업로드는 이미 평문으로 메모리에 있음)
+  // 기존 자료를 평문으로 확보해 새 키 대상으로 재스테이징
+  // (미발행 업로드는 이미 평문으로 메모리에 있음)
   for (const m of blob.materials || []) {
     const pending = S.pendingUploads.get(m.path);
     let plain;
@@ -653,13 +701,10 @@ async function rotateAcademyKey(oldFileId) {
       plain = new Uint8Array(await decryptBytes(oldKey, encBuf));
       S.pendingDeletes.add(m.path);
     }
-    const newId = randomHexId(16);
-    m.path = `data/m/${newId}.bin`;
-    S.pendingUploads.set(m.path, { bytes: plain, academyFileId: null }); // 아래에서 새 ID로 바꿈
+    m.path = `data/m/${randomHexId(16)}.bin`;
+    S.pendingUploads.set(m.path, { bytes: plain, academyFileId: newFileId });
   }
 
-  const newFileId = randomHexId(16);
-  const newKey = randomKeyB64();
   S.pendingDeletes.add(`data/a/${oldFileId}.json`);
   S.academies.delete(oldFileId);
   S.academies.set(newFileId, blob);
@@ -667,9 +712,9 @@ async function rotateAcademyKey(oldFileId) {
   entry.fileId = newFileId;
   entry.key = newKey;
 
-  // pendingUploads의 소속 갱신 (기존 것 포함)
+  // 이 학원 대상으로 대기 중이던 자료실 업로드만 새 키 대상으로 이전
   for (const [, up] of S.pendingUploads) {
-    if (up.academyFileId === oldFileId || up.academyFileId === null) up.academyFileId = newFileId;
+    if (up.academyFileId === oldFileId) up.academyFileId = newFileId;
   }
   // 소속 학생 전원 재암호화 대상 (blob.academy는 발행 시 roster 기준으로 동기화)
   for (const st of S.roster.students) {
@@ -984,7 +1029,10 @@ function renderAttendanceTab(container) {
     return;
   }
   card.appendChild(
-    el("p", { class: "hint", text: "칸을 누를 때마다 출석 → 지각 → 결석 → 보강 → 빈칸 순서로 바뀝니다." })
+    el("p", {
+      class: "hint",
+      text: "원하는 상태 버튼을 바로 누르세요. 선택된 칸을 다시 누르면 변경하거나 지울 수 있습니다.",
+    })
   );
   const students = activeStudentsOf(S.selAcademy);
   const tbl = el("table", { class: "grid" });
@@ -998,26 +1046,72 @@ function renderAttendanceTab(container) {
     const blob = S.students.get(st.fileId);
     const row = el("tr", {}, [el("td", { class: "name-cell", text: st.name })]);
     for (const d of week.sessions) {
+      const td = el("td");
+      let open = false; // 선택된 칸을 다시 눌러 선택기를 연 상태
       const get = () => blob.weeks?.[week.id]?.attendance?.[d] || "";
-      const btn = el("button", { class: "cell-toggle att-cell" });
-      const paint = () => {
-        const code = get();
-        btn.textContent = code ? ATTENDANCE[code].label : "–";
-        btn.className = `cell-toggle att-cell ${code ? ATTENDANCE[code].cls : ""}`;
-      };
-      btn.addEventListener("click", () => {
+      const set = (code) => {
         blob.weeks[week.id] = blob.weeks[week.id] || {};
         blob.weeks[week.id].attendance = blob.weeks[week.id].attendance || {};
-        const cur = get();
-        const idx = ATTENDANCE_CYCLE.indexOf(cur);
-        const next = idx === ATTENDANCE_CYCLE.length - 1 ? "" : ATTENDANCE_CYCLE[idx + 1];
-        if (next) blob.weeks[week.id].attendance[d] = next;
+        if (code) blob.weeks[week.id].attendance[d] = code;
         else delete blob.weeks[week.id].attendance[d];
         markStudent(st.fileId);
-        paint();
-      });
+      };
+      const paint = () => {
+        clear(td);
+        const code = get();
+        const info = ATTENDANCE[code]; // 알 수 없는 코드는 선택기로 처리
+        if (code && info && !open) {
+          // 선택됨: 큰 칩 하나 (클릭 → 선택기 재오픈)
+          td.appendChild(
+            el("button", {
+              class: `cell-toggle att-cell ${info.cls}`,
+              text: info.label,
+              title: "누르면 변경할 수 있습니다",
+              onclick: () => {
+                open = true;
+                paint();
+              },
+            })
+          );
+        } else {
+          // 미선택/변경 중: 모든 상태를 작은 버튼으로 나열
+          const chooser = el("div", { class: "att-chooser" });
+          for (const c of ATTENDANCE_ORDER) {
+            const o = ATTENDANCE[c];
+            chooser.appendChild(
+              el("button", {
+                class: `att-opt att-cell ${o.cls}`,
+                text: o.label[0], // 출/지/결/보/조/공
+                title: o.label,
+                "aria-label": `${st.name} ${d} ${o.label}`,
+                onclick: () => {
+                  set(c);
+                  open = false;
+                  paint();
+                },
+              })
+            );
+          }
+          if (code) {
+            chooser.appendChild(
+              el("button", {
+                class: "att-opt",
+                text: "–",
+                title: "지우기",
+                "aria-label": `${st.name} ${d} 지우기`,
+                onclick: () => {
+                  set("");
+                  open = false;
+                  paint();
+                },
+              })
+            );
+          }
+          td.appendChild(chooser);
+        }
+      };
       paint();
-      row.appendChild(el("td", {}, [btn]));
+      row.appendChild(td);
     }
     tbl.appendChild(row);
   }
@@ -1045,15 +1139,95 @@ function renderReportsTab(container) {
   const who = el("div", { class: "who" });
   const count = el("div", { class: "char-count" });
   const ta = el("textarea", {
-    rows: "8",
-    placeholder: "이번 주 학습 태도, 강점, 보완할 점 등을 적어 주세요. 학생/학부모에게 그대로 보입니다.",
+    rows: "6",
+    placeholder: "학생/학부모에게 전달할 사항을 간단히 적어 주세요. 그대로 보입니다.",
   });
+
+  // ---- 퀴즈 분석 PDF (학생 본인 키로 암호화 — 그 학생 코드로만 열림) ----
+  const pdfBox = el("div");
+
+  const removePdf = (st) => {
+    const wd = S.students.get(st.fileId).weeks?.[week.id];
+    const pdf = wd?.reportPdf;
+    if (!pdf) return;
+    if (S.pendingUploads.has(pdf.path)) S.pendingUploads.delete(pdf.path);
+    else S.pendingDeletes.add(pdf.path);
+    delete wd.reportPdf;
+    markStudent(st.fileId);
+  };
+
+  const renderPdf = () => {
+    clear(pdfBox);
+    const st = students[idx];
+    const wd = S.students.get(st.fileId).weeks?.[week.id] || {};
+    const pdf = wd.reportPdf;
+    if (pdf) {
+      pdfBox.appendChild(
+        el("div", { class: "material" }, [
+          el("div", { class: "m-info" }, [
+            el("div", {
+              class: "m-title",
+              text: `📊 ${pdf.origName}${S.pendingUploads.has(pdf.path) ? " (발행 대기)" : ""}`,
+            }),
+            el("div", { class: "m-meta", text: formatBytes(pdf.size) }),
+          ]),
+          el("div", { class: "m-actions" }, [
+            el("button", {
+              class: "btn btn-small btn-danger",
+              text: "삭제",
+              onclick: async () => {
+                const ok = await confirmModal({
+                  title: "분석 PDF 삭제",
+                  body: `${st.name} 학생의 '${pdf.origName}'을(를) 삭제할까요?`,
+                  okText: "삭제",
+                  danger: true,
+                });
+                if (!ok) return;
+                removePdf(st);
+                renderPdf();
+              },
+            }),
+          ]),
+        ])
+      );
+    }
+    const fileIn = el("input", { type: "file", accept: "application/pdf,.pdf" });
+    const addBtn = el("button", {
+      class: "btn btn-small btn-primary",
+      text: pdf ? "PDF 교체" : "PDF 추가",
+      onclick: async () => {
+        const f = fileIn.files[0];
+        if (!f) return toast("파일을 선택해 주세요.", "error");
+        if (f.size > 90 * 1024 * 1024)
+          return toast("90MB를 넘는 파일은 올릴 수 없습니다 (GitHub 제한).", "error");
+        if (f.size > 25 * 1024 * 1024)
+          toast("파일이 큽니다 — 업로드와 열람이 느릴 수 있습니다.", "error");
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        removePdf(st); // 교체 시 기존 것 정리 (대기 중 → 맵 제거 / 발행됨 → 삭제 예약)
+        const blob = S.students.get(st.fileId);
+        blob.weeks[week.id] = blob.weeks[week.id] || {};
+        const path = `data/m/${randomHexId(16)}.bin`;
+        blob.weeks[week.id].reportPdf = {
+          path,
+          origName: f.name,
+          size: f.size,
+          mime: f.type || "application/pdf",
+        };
+        S.pendingUploads.set(path, { bytes, studentFileId: st.fileId });
+        markStudent(st.fileId);
+        toast("추가되었습니다. '발행'해야 학생이 볼 수 있습니다.", "ok");
+        renderPdf();
+      },
+    });
+    pdfBox.appendChild(el("div", { class: "toolbar" }, [fileIn, addBtn]));
+  };
 
   const load = () => {
     const st = students[idx];
     who.textContent = `${st.name} (${idx + 1}/${students.length})`;
     ta.value = S.students.get(st.fileId)?.weeks?.[week.id]?.report || "";
     count.textContent = `${ta.value.length}자`;
+    renderPdf();
   };
   const save = () => {
     const st = students[idx];
@@ -1095,6 +1269,12 @@ function renderReportsTab(container) {
       }),
     ])
   );
+  card.appendChild(el("h3", { text: "퀴즈 분석 PDF", style: "font-size:15px;margin-top:8px" }));
+  card.appendChild(
+    el("p", { class: "hint", text: "이 학생의 접속 코드로만 열리도록 개별 암호화되어 올라갑니다." })
+  );
+  card.appendChild(pdfBox);
+  card.appendChild(el("h3", { text: "전달 사항", style: "font-size:15px;margin-top:14px" }));
   card.appendChild(ta);
   card.appendChild(count);
   card.appendChild(el("p", { class: "hint", text: "입력하는 즉시 임시 저장됩니다. '발행'해야 사이트에 반영됩니다." }));
@@ -1449,7 +1629,15 @@ function renderPublishTab(container) {
     el("button", {
       class: "btn btn-block",
       text: "💾 백업 다운로드 (평문 JSON — 안전한 곳에 보관)",
-      onclick: () => {
+      onclick: async () => {
+        if (dirtyCount() > 0) {
+          const ok = await confirmModal({
+            title: "발행 전 백업",
+            body: "발행하지 않은 변경과 업로드 대기 파일(PDF 등)은 백업에 포함되지 않습니다. 먼저 '발행'한 뒤 백업하는 것을 권장합니다. 그래도 지금 백업할까요?",
+            okText: "지금 백업",
+          });
+          if (!ok) return;
+        }
         const backup = {
           v: S.meta.v,
           savedAt: new Date().toISOString(),
@@ -1568,9 +1756,15 @@ async function buildPublishFiles(mode) {
     pushJSON(`data/s/${st.fileId}.json`, await encryptJSON(key, S.students.get(st.fileId)));
   }
   for (const [path, up] of S.pendingUploads) {
-    const aEntry = S.roster.academies.find((a) => a.fileId === up.academyFileId);
-    if (!aEntry) continue;
-    const key = await importAesKeyB64(aEntry.key);
+    // 학생 대상(개인 분석 PDF) 또는 학원 대상(자료실) — 소유자를 못 찾으면
+    // 조용히 건너뛰지 않고 발행을 중단한다 (무음 데이터 손실 방지)
+    const encKeyB64 = up.studentFileId
+      ? S.roster.students.find((s) => s.fileId === up.studentFileId)?.encKey
+      : S.roster.academies.find((a) => a.fileId === up.academyFileId)?.key;
+    if (!encKeyB64) {
+      throw new Error(`업로드 파일의 소유자를 찾을 수 없습니다 (${path}). 발행이 중단되었습니다.`);
+    }
+    const key = await importAesKeyB64(encKeyB64);
     push(path, new Uint8Array(await encryptBytes(key, up.bytes)));
   }
 

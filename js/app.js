@@ -12,8 +12,27 @@ import {
 import { $, el, clear, toast, copyText, tabBar, setBusy, spinner } from "./ui.js";
 import { renderScoreChart } from "./chart.js";
 
+// 자동 로그인 체크 → localStorage (탭을 닫아도 유지, 로그아웃 전까지)
+// 미체크 → sessionStorage (새로고침에는 유지, 탭을 닫으면 자동 해제)
 const REMEMBER_KEY = "shs.code";
 const app = $("#app");
+
+function savedCode() {
+  return localStorage.getItem(REMEMBER_KEY) || sessionStorage.getItem(REMEMBER_KEY);
+}
+function storeCode(code, remember) {
+  if (remember) {
+    localStorage.setItem(REMEMBER_KEY, code);
+    sessionStorage.removeItem(REMEMBER_KEY);
+  } else {
+    sessionStorage.setItem(REMEMBER_KEY, code);
+    localStorage.removeItem(REMEMBER_KEY);
+  }
+}
+function clearCode() {
+  localStorage.removeItem(REMEMBER_KEY);
+  sessionStorage.removeItem(REMEMBER_KEY);
+}
 
 let session = null; // { student, academy, academyKey }
 let meta = null;
@@ -40,11 +59,11 @@ async function init() {
   }
   document.title = meta.site?.title || document.title;
 
-  const saved = localStorage.getItem(REMEMBER_KEY);
+  const saved = savedCode();
   if (saved) {
     const ok = await tryLogin(saved, true);
     if (ok) return;
-    localStorage.removeItem(REMEMBER_KEY);
+    clearCode();
   }
   renderLogin();
 }
@@ -97,6 +116,11 @@ function renderLogin(errorMsg) {
         el("p", { class: "login-sub", text: "안내받은 접속 코드를 입력해 주세요." }),
         el("label", { class: "field" }, [codeInput]),
         el("label", { class: "check" }, [remember, "이 기기에서 자동 로그인"]),
+        el("p", {
+          class: "hint",
+          style: "text-align:left;margin-top:0",
+          text: "학원·학교 등 공용 기기에서는 체크하지 마세요. 체크한 기기에서는 사용 후 꼭 [로그아웃]을 눌러 주세요.",
+        }),
         errBox,
         submitBtn,
       ]),
@@ -115,7 +139,7 @@ async function tryLogin(code, isAuto, remember = false) {
   }
   try {
     session = await loginStudent(code, meta);
-    if (remember) localStorage.setItem(REMEMBER_KEY, code);
+    if (!isAuto) storeCode(code, remember);
     renderDashboard();
     return true;
   } catch (e) {
@@ -128,7 +152,7 @@ async function tryLogin(code, isAuto, remember = false) {
 }
 
 function logout() {
-  localStorage.removeItem(REMEMBER_KEY);
+  clearCode();
   for (const u of blobURLs.splice(0)) URL.revokeObjectURL(u);
   session = null;
   renderLogin();
@@ -287,16 +311,68 @@ function statTile(label, value, sub) {
   ]);
 }
 
+// ---------- 암호화 파일 행 (자료실·리포트 PDF 공용) ----------
+function fileRow({ title, metaText, entry, key }) {
+  const viewBtn = el("button", { class: "btn btn-small", text: "보기" });
+  const saveBtn = el("button", { class: "btn btn-small", text: "저장" });
+  const busy = (b) => {
+    viewBtn.disabled = b;
+    saveBtn.disabled = b;
+  };
+  const open = async (mode) => {
+    busy(true);
+    toast("파일을 여는 중입니다…");
+    try {
+      const blob = await loadMaterial(entry, key);
+      const url = URL.createObjectURL(blob);
+      blobURLs.push(url);
+      if (mode === "view") {
+        window.open(url, "_blank");
+      } else {
+        const a = el("a", { href: url, download: entry.origName || title });
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+    } catch (e) {
+      console.error(e);
+      toast("파일을 불러오지 못했습니다.", "error");
+    }
+    busy(false);
+  };
+  viewBtn.addEventListener("click", () => open("view"));
+  saveBtn.addEventListener("click", () => open("save"));
+  return el("div", { class: "material" }, [
+    el("div", { class: "m-info" }, [
+      el("div", { class: "m-title", text: title }),
+      el("div", { class: "m-meta", text: metaText }),
+    ]),
+    el("div", { class: "m-actions" }, [viewBtn, saveBtn]),
+  ]);
+}
+
 // ---------- ③ 리포트 ----------
 function renderReport(container, week) {
   const card = el("div", { class: "card" }, [el("h2", { text: "주간 리포트" })]);
-  const report = week ? weekData(week.id).report : null;
-  if (!report) {
+  const wd = week ? weekData(week.id) : {};
+  const report = wd.report;
+  const pdf = wd.reportPdf;
+  if (!report && !pdf) {
     card.appendChild(
       el("p", { class: "empty", text: "이번 주 리포트가 아직 작성되지 않았습니다." })
     );
   } else {
-    card.appendChild(el("div", { class: "report-body", text: report }));
+    if (pdf) {
+      card.appendChild(
+        fileRow({
+          title: "📊 퀴즈 분석 리포트",
+          metaText: [pdf.origName, formatBytes(pdf.size)].filter(Boolean).join(" · "),
+          entry: pdf,
+          key: session.studentKey,
+        })
+      );
+    }
+    if (report) card.appendChild(el("div", { class: "report-body", text: report }));
   }
   container.appendChild(card);
 }
@@ -343,46 +419,13 @@ function renderMaterials(container, weeks) {
   };
   const sorted = [...materials].sort((a, b) => (b.weekId || "").localeCompare(a.weekId || ""));
   for (const m of sorted) {
-    const viewBtn = el("button", { class: "btn btn-small", text: "보기" });
-    const saveBtn = el("button", { class: "btn btn-small", text: "저장" });
-    const busy = (b) => {
-      viewBtn.disabled = b;
-      saveBtn.disabled = b;
-    };
-    const open = async (mode) => {
-      busy(true);
-      toast("파일을 여는 중입니다…");
-      try {
-        const blob = await loadMaterial(m, session.academyKey);
-        const url = URL.createObjectURL(blob);
-        blobURLs.push(url);
-        if (mode === "view") {
-          window.open(url, "_blank");
-        } else {
-          const a = el("a", { href: url, download: m.origName || m.title });
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-        }
-      } catch (e) {
-        console.error(e);
-        toast("파일을 불러오지 못했습니다.", "error");
-      }
-      busy(false);
-    };
-    viewBtn.addEventListener("click", () => open("view"));
-    saveBtn.addEventListener("click", () => open("save"));
     card.appendChild(
-      el("div", { class: "material" }, [
-        el("div", { class: "m-info" }, [
-          el("div", { class: "m-title", text: m.title }),
-          el("div", {
-            class: "m-meta",
-            text: [weekLabel(m.weekId), formatBytes(m.size)].filter(Boolean).join(" · "),
-          }),
-        ]),
-        el("div", { class: "m-actions" }, [viewBtn, saveBtn]),
-      ])
+      fileRow({
+        title: m.title,
+        metaText: [weekLabel(m.weekId), formatBytes(m.size)].filter(Boolean).join(" · "),
+        entry: m,
+        key: session.academyKey,
+      })
     );
   }
   container.appendChild(card);

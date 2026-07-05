@@ -1,8 +1,9 @@
 // make-sample.mjs — QA용 샘플(가상 학생) 데이터셋 생성기
-// 실행: node dev/make-sample.mjs   (저장소 루트에서)
+// ⚠️ 경고: 이 스크립트는 data/ 폴더를 삭제 후 재생성한다.
+//    실운영 저장소 체크아웃에서 절대 실행 금지 (실제 발행 데이터가 사라진다!).
+//    QA는 반드시 저장소를 스크래치 폴더에 복사한 뒤 그 안에서 실행할 것.
 // 실제 crypto.js를 그대로 사용하므로 브라우저 복호화와 100% 호환된다.
-// 생성된 코드/비밀번호는 dev/SAMPLE.md에 기록된다. 실사용 시 admin.html의
-// 초기 설정 마법사를 실행하면 이 샘플은 덮어써진다.
+// 생성된 코드/비밀번호는 dev/SAMPLE.md에 기록된다.
 
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
@@ -193,19 +194,37 @@ async function main() {
         });
         const attendance = {};
         for (const [di, d] of w.sessions.entries()) {
-          attendance[d] = (si + di + wi) % 7 === 3 ? "L" : (si + di + wi) % 11 === 5 ? "A" : "P";
+          const k = si + di + wi;
+          attendance[d] =
+            k % 7 === 3 ? "L" : k % 11 === 5 ? "A" : k % 9 === 4 ? "E" : k % 13 === 6 ? "X" : "P";
         }
         weeksData[w.id] = {
           ...(score != null ? { quiz: { score, max: 100 } } : {}),
           homework: hw,
           attendance,
-          ...(wi === A.weeks.length - 1
+          // 마지막 두 주차에 전달사항 텍스트 (마지막 주차만 PDF 동반 → PDF 없는 케이스도 QA 가능)
+          ...(wi >= A.weeks.length - 2
             ? {
                 report: `${name} 학생은 이번 주 ${score != null ? `퀴즈에서 ${score}점을 받았습니다` : "퀴즈에 응시하지 않았습니다"}. 개념 이해는 좋으나 계산 실수를 줄이는 연습이 필요합니다. 다음 주에는 실험 단원 예습을 추천합니다.`,
               }
             : {}),
         };
       });
+
+      // 마지막 주차에 개인 퀴즈 분석 PDF 샘플 (학생 본인 키로 암호화)
+      const lastWeekId = A.weeks[A.weeks.length - 1].id;
+      const analysisPdf = makeSamplePDF("Quiz Analysis Report");
+      const pdfPath = `data/m/${randomHexId(16)}.bin`;
+      await writeFile(
+        path.join(root, pdfPath),
+        new Uint8Array(await encryptBytes(aesKey, analysisPdf))
+      );
+      weeksData[lastWeekId].reportPdf = {
+        path: pdfPath,
+        origName: "quiz-analysis.pdf",
+        mime: "application/pdf",
+        size: analysisPdf.length,
+      };
 
       const studentBlob = {
         v: FORMAT_VERSION,

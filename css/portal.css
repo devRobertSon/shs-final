@@ -274,6 +274,12 @@ li.hw-done .hw-text {
 .att-chip.att-m .s {
   color: var(--accent-strong);
 }
+.att-chip.att-e .s {
+  color: #0b6e6e;
+}
+.att-chip.att-x .s {
+  color: #52514e;
+}
 .progress-text {
   white-space: pre-wrap;
   font-size: 15px;

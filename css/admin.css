@@ -89,6 +89,35 @@ button.att-cell.att-m {
   background: var(--accent-wash);
   color: var(--accent-strong);
 }
+button.att-cell.att-e {
+  background: #e0f4f4;
+  color: #0b6e6e;
+}
+button.att-cell.att-x {
+  background: #efeeea;
+  color: #52514e;
+}
+
+/* 출석 상태 선택기: 셀 안 인라인 3×2 그리드 */
+.att-chooser {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(40px, 1fr));
+  gap: 4px;
+  min-width: 136px;
+}
+.att-chooser .att-opt {
+  min-height: 36px;
+  padding: 2px 4px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--page);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.att-chooser .att-opt:active {
+  transform: translateY(1px);
+}
 
 .tsv-area {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

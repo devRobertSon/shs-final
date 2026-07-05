@@ -50,7 +50,8 @@ export async function loginStudent(code, meta) {
   const academyKey = await importAesKeyB64(student.academy.key);
   const academyEnv = await fetchJSON(`data/a/${student.academy.fileId}.json`);
   const academy = await decryptJSON(academyKey, academyEnv);
-  return { student, academy, academyKey, studentFileId: fileId };
+  // studentKey: 본인 전용 자료(퀴즈 분석 PDF 등) 복호화용
+  return { student, academy, academyKey, studentKey: aesKey, studentFileId: fileId };
 }
 
 // 자료실 파일 복호화 → Blob
@@ -102,14 +103,16 @@ export function isoWeekId(date) {
   return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
 }
 
-// 출석 코드
+// 출석 코드 (ATTENDANCE_ORDER는 선택 버튼 표시 순서 — 뒤에만 추가할 것)
 export const ATTENDANCE = {
   P: { label: "출석", cls: "att-p" },
   L: { label: "지각", cls: "att-l" },
   A: { label: "결석", cls: "att-a" },
   M: { label: "보강", cls: "att-m" },
+  E: { label: "조퇴", cls: "att-e" },
+  X: { label: "공결", cls: "att-x" },
 };
-export const ATTENDANCE_CYCLE = ["P", "L", "A", "M"];
+export const ATTENDANCE_ORDER = ["P", "L", "A", "M", "E", "X"];
 
 // 카톡 공유용 숙제 목록 텍스트 (관리자/학생 공용)
 export function homeworkShareText(academyName, week) {
