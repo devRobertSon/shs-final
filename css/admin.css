@@ -101,9 +101,9 @@ button.att-cell.att-x {
 /* 출석 상태 선택기: 셀 안 인라인 3×2 그리드 */
 .att-chooser {
   display: grid;
-  grid-template-columns: repeat(3, minmax(40px, 1fr));
+  grid-template-columns: repeat(3, minmax(54px, 1fr));
   gap: 4px;
-  min-width: 136px;
+  min-width: 174px;
 }
 .att-chooser .att-opt {
   min-height: 36px;
@@ -201,6 +201,316 @@ button.att-cell.att-x {
   white-space: pre-wrap;
   max-height: 200px;
   overflow-y: auto;
+}
+
+/* ---------- 원장님 보고서: 검사 패널 + 미리보기 ---------- */
+.check-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+.check-item {
+  font-size: 14px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: var(--page);
+}
+.check-item.ok {
+  background: #effaef;
+  border-color: #bfe6bf;
+}
+.check-item.warn {
+  background: var(--warn-wash);
+  border-color: #ecd9a6;
+}
+
+.report-preview {
+  background: #fff;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 26px 24px;
+  margin-top: 12px;
+}
+
+/* 헤더 밴드 */
+.rd-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--accent-wash);
+  border: 1px solid #c8ddf5;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+.rd-academy-chip {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 3px 12px;
+  margin-bottom: 6px;
+  letter-spacing: 0.5px;
+}
+.rd-header h1 {
+  font-size: 22px;
+  margin: 0 0 4px;
+  letter-spacing: -0.3px;
+}
+.rd-meta {
+  color: var(--ink-2);
+  font-size: 12.5px;
+}
+.rd-week-box {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: right;
+}
+.rd-week-label {
+  font-size: 11px;
+  color: var(--accent-strong);
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.rd-week {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent-strong);
+}
+
+/* 섹션: 번호 배지 + 제목 */
+.rd-section {
+  margin: 22px 0;
+}
+.rd-sec-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+}
+.rd-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+.rd-sec-head h2 {
+  font-size: 15.5px;
+  margin: 0;
+}
+
+/* 표: 가로 괘선 + 지브라 */
+.rd-table-wrap {
+  overflow-x: auto;
+}
+.rd-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13.5px;
+}
+.rd-table th,
+.rd-table td {
+  padding: 6px 10px;
+  text-align: center;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--hairline);
+}
+.rd-table th {
+  background: var(--page);
+  color: var(--ink-2);
+  font-weight: 600;
+  font-size: 12.5px;
+  border-bottom: 2px solid #d4d3cc;
+}
+.rd-table tr:nth-child(even) td {
+  background: #fafaf7;
+}
+.rd-table .rd-name {
+  text-align: left;
+  font-weight: 500;
+}
+.rd-quiz-table .rd-score {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.rd-table tr.rd-top td {
+  background: #eef7ee;
+}
+.rd-top .rd-score {
+  color: var(--good-text);
+}
+
+/* 출석 칩 / 숙제 체크 */
+.rd-chip {
+  display: inline-block;
+  min-width: 44px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+.rd-chip.att-p { background: #effaef; color: var(--good-text); border-color: #cde9cd; }
+.rd-chip.att-l { background: var(--warn-wash); color: #7a5b00; border-color: #ecd9a6; }
+.rd-chip.att-a { background: #fdecec; color: var(--bad); border-color: #f3c9c9; }
+.rd-chip.att-m { background: var(--accent-wash); color: var(--accent-strong); border-color: #c8ddf5; }
+.rd-chip.att-e { background: #e0f4f4; color: #0b6e6e; border-color: #bde3e3; }
+.rd-chip.att-x { background: #efeeea; color: #52514e; border-color: #d8d6cf; }
+.rd-dash {
+  color: var(--muted);
+}
+.rd-check {
+  color: var(--good-text);
+  font-weight: 700;
+}
+.rd-rate {
+  min-width: 104px;
+}
+.rd-bar {
+  display: inline-block;
+  width: 52px;
+  height: 6px;
+  background: #e9e8e2;
+  border-radius: 999px;
+  margin-right: 6px;
+  vertical-align: 2px;
+  overflow: hidden;
+}
+.rd-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+/* 퀴즈 통계 타일 + 분석 콜아웃 + 추이 차트 */
+.rd-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.rd-stat {
+  background: var(--page);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 10px 6px;
+  text-align: center;
+}
+.rd-stat-label {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.rd-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.rd-stat-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+.rd-h3 {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin: 14px 0 4px;
+}
+.rd-chart {
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 8px 6px 2px;
+  background: #fff;
+}
+.rd-callout {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-wash);
+  border-radius: 0 8px 8px 0;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin-top: 12px;
+}
+.rd-callout strong {
+  color: var(--accent-strong);
+}
+
+/* 진도 / 공지 / 기타 */
+.rd-progress {
+  background: var(--page);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.rd-text {
+  white-space: pre-wrap;
+  font-size: 14px;
+  margin: 4px 0;
+}
+.rd-empty {
+  color: var(--muted);
+  font-size: 14px;
+}
+.rd-note {
+  color: var(--ink-2);
+  font-size: 13px;
+  margin: 6px 0 0;
+}
+.rd-list {
+  font-size: 14px;
+  margin: 4px 0 8px;
+  padding-left: 20px;
+}
+.rd-notice {
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 8px 0;
+}
+.rd-notice-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+}
+.rd-pin {
+  background: var(--accent);
+  color: #fff;
+  font-size: 10.5px;
+  border-radius: 999px;
+  padding: 1px 8px;
+  flex: 0 0 auto;
+}
+.rd-notice-date {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  flex: 0 0 auto;
+}
+.rd-footer {
+  border-top: 1px solid var(--hairline);
+  margin-top: 22px;
+  padding-top: 10px;
+  color: var(--muted);
+  font-size: 11.5px;
+  text-align: center;
 }
 
 .report-nav {

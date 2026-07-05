@@ -19,6 +19,7 @@ import {
 import { fetchJSON, fetchBytes, metaExists, sortWeeks, isoWeekId, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER } from "./store.js";
 import { $, el, clear, toast, confirmModal, copyText, setBusy } from "./ui.js";
 import { runWizard, createStudent, emptyStudentBlob, emptyAcademyBlob, printCodeCards } from "./setup.js";
+import { buildDirectorReport } from "./report.js";
 import { publishToGitHub, guessRepoFromLocation } from "./github.js";
 import { buildZip, downloadBlob } from "./zip.js";
 
@@ -307,6 +308,7 @@ function renderMain() {
     ["notices", "공지"],
     ["materials", "자료실"],
     ["progress", "진도"],
+    ["director", "보고서"],
     ["publish", "발행"],
   ];
   const bar = el("div", { class: "tabbar" });
@@ -341,6 +343,7 @@ function renderTab() {
     notices: renderNoticesTab,
     materials: renderMaterialsTab,
     progress: renderProgressTab,
+    director: renderDirectorTab,
     publish: renderPublishTab,
   }[activeTab];
   render(contentEl);
@@ -1081,7 +1084,7 @@ function renderAttendanceTab(container) {
             chooser.appendChild(
               el("button", {
                 class: `att-opt att-cell ${o.cls}`,
-                text: o.label[0], // 출/지/결/보/조/공
+                text: o.label,
                 title: o.label,
                 "aria-label": `${st.name} ${d} ${o.label}`,
                 onclick: () => {
@@ -1499,7 +1502,62 @@ function renderProgressTab(container) {
   container.appendChild(card);
 }
 
-// ---------- ⑨ 발행 ----------
+// ---------- ⑨ 원장님 보고서 ----------
+function renderDirectorTab(container) {
+  toolbar(container);
+  const week = selectedWeek();
+  const card = el("div", { class: "card" }, [el("h2", { text: "원장님 주간 수업 현황 보고서" })]);
+  if (!week) {
+    card.appendChild(el("p", { class: "empty", text: "'주차 관리'에서 먼저 주차를 만들어 주세요." }));
+    container.appendChild(card);
+    return;
+  }
+  card.appendChild(
+    el("p", {
+      class: "hint",
+      text: "이 보고서는 저장소에 올라가지 않고 이 브라우저에서만 만들어집니다. PDF로 저장한 뒤 카톡·메일로 직접 보내세요.",
+    })
+  );
+
+  const { checks, doc } = buildDirectorReport({
+    academyName: academyEntry().name,
+    weeks: academyBlob().weeks,
+    weekId: week.id,
+    students: activeStudentsOf(S.selAcademy).map((st) => ({
+      name: st.name,
+      blob: S.students.get(st.fileId),
+    })),
+    notices: academyBlob().notices,
+    teacherName: S.roster.teacher?.name,
+    dirty: dirtyCount() > 0,
+  });
+
+  // 누락 항목 검사 결과
+  const panel = el("div", { class: "check-panel" });
+  for (const c of checks) {
+    const icon = c.level === "ok" ? "✅" : c.level === "warn" ? "⚠️" : "ℹ️";
+    panel.appendChild(el("div", { class: `check-item ${c.level}`, text: `${icon} ${c.text}` }));
+  }
+  card.appendChild(panel);
+
+  card.appendChild(
+    el("button", {
+      class: "btn btn-primary btn-block",
+      text: "🖨️ PDF로 저장 (인쇄 창에서 '대상: PDF로 저장' 선택)",
+      onclick: () => {
+        const root = $("#print-root");
+        clear(root);
+        root.className = "print-report";
+        root.appendChild(doc.cloneNode(true));
+        window.print();
+      },
+    })
+  );
+  card.appendChild(el("div", { class: "table-wrap report-preview" }, [doc]));
+  container.appendChild(card);
+}
+
+// ---------- ⑩ 발행 ----------
 function renderPublishTab(container) {
   const card = el("div", { class: "card" }, [el("h2", { text: "발행" })]);
   card.appendChild(

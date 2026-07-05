@@ -261,6 +261,7 @@ async function buildModel(state, rosters, siteURL) {
 export function printCodeCards(entries, siteTitle, siteURL) {
   const root = $("#print-root");
   clear(root);
+  root.className = "print-cards"; // 인쇄 루트는 보고서와 공유 — 용도별 클래스 지정
   for (const e of entries) {
     root.appendChild(
       el("div", { class: "code-card" }, [
