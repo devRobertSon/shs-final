@@ -121,7 +121,7 @@ function renderLogin(errorMsg) {
         el("p", {
           class: "hint",
           style: "text-align:left;margin-top:0",
-          text: "학원·학교 등 공용 기기에서는 체크하지 마세요. 체크한 기기에서는 사용 후 꼭 [로그아웃]을 눌러 주세요.",
+          text: "학원·학교 등 공용 기기에서는 체크하지 마세요. 공용 기기를 쓴 뒤에는 꼭 [로그아웃]을 눌러 주세요.",
         }),
         errBox,
         submitBtn,
