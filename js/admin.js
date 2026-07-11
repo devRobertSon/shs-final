@@ -17,7 +17,7 @@ import {
   normalizePassword,
   b64encode,
 } from "./crypto.js";
-import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER } from "./store.js";
+import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER, isNoShow } from "./store.js";
 import { $, el, clear, toast, confirmModal, copyText, setBusy } from "./ui.js";
 import { runWizard, createStudent, emptyStudentBlob, emptyAcademyBlob, printCodeCards } from "./setup.js";
 import { buildDirectorReport } from "./report.js";
@@ -1025,19 +1025,34 @@ function renderScoresTab(container) {
   // TSV 붙여넣기
   const tsv = el("textarea", {
     class: "tsv-area",
-    placeholder: "엑셀에서 [이름] [점수] 두 열을 복사해 붙여넣으세요.\n예)\n김철수\t85\n이영희\t92",
+    placeholder: "엑셀에서 [이름] [점수] 두 열을 복사해 붙여넣으세요.\n예)\n김철수\t85\n이영희\t92\n박민수\t결   ← '결'을 쓰면 미응시로 표시됩니다",
   });
   const warn = el("p", { class: "error-text" });
 
-  // 점수 입력 표
+  // 점수 입력 표 (빈칸 = 미입력, [미응시] = 결석 등으로 응시 안 함 → 평균 제외)
   const inputs = new Map(); // fileId -> input
+  const noShow = new Map(); // fileId -> boolean
+  const noShowBtns = new Map(); // fileId -> button
   const avgLine = el("p", { class: "hint" });
   const tbl = el("table", { class: "grid" });
   tbl.appendChild(
-    el("tr", {}, [el("th", { class: "name-cell", text: "이름" }), el("th", { text: "점수" })])
+    el("tr", {}, [
+      el("th", { class: "name-cell", text: "이름" }),
+      el("th", { text: "점수" }),
+      el("th", { text: "미응시" }),
+    ])
   );
+  const setNoShow = (fileId, on) => {
+    noShow.set(fileId, on);
+    const input = inputs.get(fileId);
+    input.disabled = on;
+    if (on) input.value = "";
+    noShowBtns.get(fileId).classList.toggle("on", on);
+  };
   for (const st of students) {
-    const cur = S.students.get(st.fileId)?.quizzes?.[quiz.id];
+    const q = S.students.get(st.fileId)?.quizzes;
+    const cur = q?.[quiz.id];
+    const ns = isNoShow(q, quiz.id);
     const input = el("input", {
       type: "number",
       class: "cell-input",
@@ -1045,20 +1060,58 @@ function renderScoresTab(container) {
       min: "0",
       oninput: updateAvg,
     });
+    if (ns) input.disabled = true;
     inputs.set(st.fileId, input);
+    noShow.set(st.fileId, ns);
+    const btn = el("button", {
+      class: `btn btn-small noshow-toggle${ns ? " on" : ""}`,
+      text: "미응시",
+      "aria-pressed": ns ? "true" : "false",
+      onclick: () => {
+        setNoShow(st.fileId, !noShow.get(st.fileId));
+        updateAvg();
+      },
+    });
+    noShowBtns.set(st.fileId, btn);
     tbl.appendChild(
-      el("tr", {}, [el("td", { class: "name-cell", text: st.name }), el("td", {}, [input])])
+      el("tr", {}, [
+        el("td", { class: "name-cell", text: st.name }),
+        el("td", {}, [input]),
+        el("td", {}, [btn]),
+      ])
     );
   }
 
   function updateAvg() {
-    const vals = [...inputs.values()].map((i) => parseFloat(i.value)).filter((v) => !isNaN(v));
+    const vals = students
+      .filter((st) => !noShow.get(st.fileId))
+      .map((st) => parseFloat(inputs.get(st.fileId).value))
+      .filter((v) => !isNaN(v));
+    const nsCount = students.filter((st) => noShow.get(st.fileId)).length;
+    const nsText = nsCount ? ` · 미응시 ${nsCount}명 (평균 제외)` : "";
     avgLine.textContent = vals.length
-      ? `응시 ${vals.length}명 · 평균 ${(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)}점`
-      : "입력된 점수가 없습니다.";
+      ? `응시 ${vals.length}명 · 평균 ${(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)}점${nsText}`
+      : `입력된 점수가 없습니다.${nsText}`;
   }
   updateAvg();
 
+  // 이 주차 출석부에 결석·공결이 있는 학생 안내 (자동 처리는 하지 않음 — 보강 응시 가능)
+  const absentish = students
+    .filter((st) => {
+      const att = S.students.get(st.fileId)?.weeks?.[quiz.weekId]?.attendance || {};
+      return Object.values(att).some((c) => c === "A" || c === "X");
+    })
+    .map((st) => st.name);
+  if (absentish.length) {
+    card.appendChild(
+      el("p", {
+        class: "hint",
+        text: `이 주차 출석부에 결석·공결 기록이 있는 학생: ${absentish.join(", ")} — 퀴즈를 보지 않았다면 [미응시]로 표시하세요.`,
+      })
+    );
+  }
+
+  const NOSHOW_TOKEN = /^(결|결석|미응시|불참|x|X|-|–)$/;
   tsv.addEventListener("input", () => {
     warn.textContent = "";
     const unmatched = [];
@@ -1066,11 +1119,14 @@ function renderScoresTab(container) {
     for (const line of lines) {
       let [name, score] = line.includes("\t") ? line.split("\t") : line.split(/\s+/);
       name = (name || "").trim();
+      score = (score || "").trim();
+      const asNoShow = NOSHOW_TOKEN.test(score);
       const num = parseFloat(score);
-      if (!name || isNaN(num)) continue;
+      if (!name || (!asNoShow && isNaN(num))) continue;
       const matches = students.filter((s) => s.name === name);
       if (matches.length === 1) {
-        inputs.get(matches[0].fileId).value = String(num);
+        setNoShow(matches[0].fileId, asNoShow);
+        if (!asNoShow) inputs.get(matches[0].fileId).value = String(num);
       } else {
         unmatched.push(name + (matches.length > 1 ? " (동명이인)" : ""));
       }
@@ -1096,15 +1152,22 @@ function renderScoresTab(container) {
           const raw = inputs.get(st.fileId).value.trim();
           const blob = S.students.get(st.fileId);
           blob.quizzes = blob.quizzes || {};
-          if (raw === "") {
-            if (quiz.id in blob.quizzes) {
+          const had = quiz.id in blob.quizzes;
+          if (noShow.get(st.fileId)) {
+            if (!had || blob.quizzes[quiz.id] !== null) {
+              blob.quizzes[quiz.id] = null; // 미응시 (평균 제외, 미입력과 구분)
+              markStudent(st.fileId);
+              changed++;
+            }
+          } else if (raw === "") {
+            if (had) {
               delete blob.quizzes[quiz.id];
               markStudent(st.fileId);
               changed++;
             }
           } else {
             const score = parseFloat(raw);
-            if (blob.quizzes[quiz.id] !== score) {
+            if (!had || blob.quizzes[quiz.id] !== score) {
               blob.quizzes[quiz.id] = score;
               markStudent(st.fileId);
               changed++;
@@ -1241,8 +1304,10 @@ function renderHomeworkTab(container) {
               const blob = S.students.get(st.fileId);
               blob.weeks[week.id] = blob.weeks[week.id] || {};
               blob.weeks[week.id].homework = blob.weeks[week.id].homework || {};
-              if (!blob.weeks[week.id].homework[item.id]) {
-                blob.weeks[week.id].homework[item.id] = true;
+              const hw = blob.weeks[week.id].homework;
+              // 확인 전(◌)은 결석 학생이므로 전체 완료로 덮어쓰지 않는다
+              if (hw[item.id] !== true && !isNoShow(hw, item.id)) {
+                hw[item.id] = true;
                 markStudent(st.fileId);
               }
             }
@@ -1254,29 +1319,43 @@ function renderHomeworkTab(container) {
     });
     tbl.appendChild(header);
 
+    // 칸 상태: 빈칸(미완료) → ✓(완료) → ◌(확인 전 = 결석 보류, 완료율 제외) → 빈칸
+    const stateOf = (hw, id) => (hw?.[id] === true ? "done" : isNoShow(hw, id) ? "hold" : "none");
+    const applyBtn = (btn, state) => {
+      btn.classList.toggle("on", state === "done");
+      btn.classList.toggle("hold", state === "hold");
+      btn.textContent = state === "done" ? "✓" : state === "hold" ? "◌" : "";
+    };
     for (const st of students) {
       const row = el("tr", {}, [el("td", { class: "name-cell", text: st.name })]);
       for (const item of week.homework) {
         const blob = S.students.get(st.fileId);
-        const checked = !!blob.weeks?.[week.id]?.homework?.[item.id];
         const btn = el("button", {
-          class: `cell-toggle ${checked ? "on" : ""}`,
-          text: checked ? "✓" : "",
+          class: "cell-toggle",
           onclick: () => {
             blob.weeks[week.id] = blob.weeks[week.id] || {};
             blob.weeks[week.id].homework = blob.weeks[week.id].homework || {};
-            const now = !blob.weeks[week.id].homework[item.id];
-            blob.weeks[week.id].homework[item.id] = now;
-            btn.classList.toggle("on", now);
-            btn.textContent = now ? "✓" : "";
+            const hw = blob.weeks[week.id].homework;
+            const cur = stateOf(hw, item.id);
+            if (cur === "none") hw[item.id] = true;
+            else if (cur === "done") hw[item.id] = null; // 확인 전(결석)
+            else delete hw[item.id];
+            applyBtn(btn, stateOf(hw, item.id));
             markStudent(st.fileId);
           },
         });
+        applyBtn(btn, stateOf(blob.weeks?.[week.id]?.homework, item.id));
         row.appendChild(el("td", {}, [btn]));
       }
       tbl.appendChild(row);
     }
     card.appendChild(el("div", { class: "table-wrap" }, [tbl]));
+    card.appendChild(
+      el("p", {
+        class: "hint",
+        text: "칸을 누를 때마다 ✓ 완료 → ◌ 확인 전(결석 등, 완료율 제외) → 빈칸(미완료) 순으로 바뀝니다. ◌는 다음 수업에서 확인 후 바꿔 주세요.",
+      })
+    );
   }
 
   card.appendChild(

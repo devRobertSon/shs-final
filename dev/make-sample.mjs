@@ -229,11 +229,15 @@ async function main() {
         }
         weeksData[w.id] = { homework: hw, attendance };
       });
+      // 숙제 '확인 전(결석 보류)' 샘플: 박서연은 W26 결석 → hw1을 null(◌)로 보류
+      if (A.name === "한빛학원" && name === "박서연") {
+        weeksData["2026-W26"].homework.hw1 = null;
+      }
 
-      // 단원 퀴즈 점수
+      // 단원 퀴즈 점수 (scores 배열의 null = 미응시 → null 그대로 저장, 평균 제외)
       const quizScores = {};
       for (const q of A.quizzes) {
-        if (q.scores[si] != null) quizScores[q.id] = q.scores[si];
+        if (q.scores[si] !== undefined) quizScores[q.id] = q.scores[si];
       }
 
       // 단원 리포트: pdfAndNote 퀴즈 = 분석 PDF + 전달사항 / noteOnly 퀴즈 = 전달사항만
@@ -383,6 +387,11 @@ ${sampleLines.join("\n")}
 | 학원 | 접속 코드 |
 |------|-----------|
 ${teacherLines.join("\n")}
+
+## 포함된 특수 케이스
+
+- 박서연(한빛) — 「화학: 몰 개념」 **미응시**(결석, 평균 제외) + W26 숙제 1번 **확인 전(◌)**
+- 한시우(미래) — 「물리: 자유낙하」 **미응시**
 
 > 이 파일은 \`node dev/make-sample.mjs\` 실행 시마다 새로 생성됩니다.
 `;

@@ -144,6 +144,13 @@ export const ATTENDANCE = {
 };
 export const ATTENDANCE_ORDER = ["P", "L", "A", "M", "E", "X"];
 
+// 결석 관련 상태는 값 null로 저장한다 (키 자체가 없으면 미입력/미완료):
+// - 퀴즈: student.quizzes[quizId] === null → 미응시 (평균·응시 인원에서 제외)
+// - 숙제: student.weeks[wid].homework[itemId] === null → 확인 전(결석 보류, 완료율에서 제외)
+export function isNoShow(map, id) {
+  return !!map && id in map && map[id] === null;
+}
+
 // 카톡 공유용 숙제 목록 텍스트 (관리자/학생 공용)
 export function homeworkShareText(academyName, week) {
   const lines = [`📌 [${academyName}] ${week.label} 숙제`];

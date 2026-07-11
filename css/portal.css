@@ -104,6 +104,11 @@
   color: var(--muted);
   border: 1px solid var(--hairline);
 }
+.hw-mark.hold {
+  background: var(--warn-wash);
+  color: #7a5b00;
+  border: 1px dashed #ecd9a6;
+}
 li.hw-done .hw-text {
   color: var(--muted);
 }
@@ -335,6 +340,14 @@ li.hw-done .hw-text {
 .hw-yes {
   color: var(--good-text);
   font-weight: 700;
+}
+.hw-hold {
+  color: #a36b00;
+  font-weight: 700;
+}
+.t-noshow {
+  color: var(--muted);
+  font-size: 12px;
 }
 .t-report {
   border-top: 1px solid var(--hairline);

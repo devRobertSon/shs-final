@@ -10,6 +10,7 @@ import {
   homeworkShareText,
   formatBytes,
   ATTENDANCE,
+  isNoShow,
 } from "./store.js";
 import { $, el, clear, toast, copyText, tabBar, setBusy, spinner } from "./ui.js";
 import { renderScoreChart, renderHistogram } from "./chart.js";
@@ -243,24 +244,37 @@ function renderHomework(container, week) {
   if (!items.length) {
     card.appendChild(el("p", { class: "empty", text: "이번 주에 등록된 숙제가 없습니다." }));
   } else {
-    const doneCount = items.filter((it) => status[it.id]).length;
+    const doneCount = items.filter((it) => status[it.id] === true).length;
+    const holdCount = items.filter((it) => isNoShow(status, it.id)).length;
     card.appendChild(
       el("p", {
         class: "hw-progress",
-        text: `완료 ${doneCount} / ${items.length} (선생님이 수업 시간에 확인 후 체크합니다)`,
+        text:
+          `완료 ${doneCount} / ${items.length - holdCount}` +
+          (holdCount ? ` · 확인 전 ${holdCount}` : "") +
+          " (선생님이 수업 시간에 확인 후 체크합니다)",
       })
     );
     const ul = el("ul", { class: "hw-list" });
     for (const it of items) {
-      const done = !!status[it.id];
+      const done = status[it.id] === true;
+      const hold = isNoShow(status, it.id);
       ul.appendChild(
         el("li", { class: done ? "hw-done" : "" }, [
-          el("span", { class: `hw-mark ${done ? "done" : "todo"}`, text: done ? "✓" : "" }),
+          el("span", {
+            class: `hw-mark ${done ? "done" : hold ? "hold" : "todo"}`,
+            text: done ? "✓" : hold ? "◌" : "",
+          }),
           el("span", { class: "hw-text", text: it.text }),
         ])
       );
     }
     card.appendChild(ul);
+    if (holdCount) {
+      card.appendChild(
+        el("p", { class: "hint", text: "◌ 결석 등으로 아직 확인하지 못한 숙제입니다. 다음 수업에서 확인합니다." })
+      );
+    }
     card.appendChild(
       el("button", {
         class: "btn btn-block",
@@ -330,7 +344,15 @@ function renderQuiz(container) {
       el("tr", {}, [
         el("td", { class: "name-cell", text: q.unit }),
         el("td", { text: shortLabel(weekLabelOf(academy.weeks, q.weekId)) }),
-        el("td", { class: "num", text: myScores[q.id] != null ? `${myScores[q.id]} / ${q.max || 100}` : "–" }),
+        el("td", {
+          class: "num",
+          text:
+            myScores[q.id] != null
+              ? `${myScores[q.id]} / ${q.max || 100}`
+              : isNoShow(myScores, q.id)
+                ? "미응시"
+                : "–",
+        }),
         el("td", { class: "num", text: q.stats?.avg != null ? String(q.stats.avg) : "–" }),
       ])
     );
@@ -652,23 +674,34 @@ function renderTeacherHomework(container, weeks, selectedWeekId, onWeekChange) {
         el("th", { text: "완료율" }),
       ])
     );
+    let anyHold = false;
     for (const r of rows) {
-      const done = items.filter((it) => r.byItem?.[it.id]).length;
+      const done = items.filter((it) => r.byItem?.[it.id] === true).length;
+      const holds = items.filter((it) => isNoShow(r.byItem, it.id)).length;
+      if (holds) anyHold = true;
+      const denom = items.length - holds;
       tbl.appendChild(
         el("tr", {}, [
           el("td", { class: "name-cell", text: r.name }),
           ...items.map((it) =>
             el("td", {}, [
-              r.byItem?.[it.id]
+              r.byItem?.[it.id] === true
                 ? el("span", { class: "hw-yes", text: "✓" })
-                : el("span", { class: "t-dash", text: "–" }),
+                : isNoShow(r.byItem, it.id)
+                  ? el("span", { class: "hw-hold", text: "◌" })
+                  : el("span", { class: "t-dash", text: "–" }),
             ])
           ),
-          el("td", { class: "num", text: `${Math.round((done / items.length) * 100)}%` }),
+          el("td", { class: "num", text: denom ? `${Math.round((done / denom) * 100)}%` : "–" }),
         ])
       );
     }
     card.appendChild(el("div", { class: "table-wrap" }, [tbl]));
+    if (anyHold) {
+      card.appendChild(
+        el("p", { class: "hint", text: "◌ = 결석 등으로 확인 전 (완료율 계산에서 제외)" })
+      );
+    }
   }
   container.appendChild(card);
 }
@@ -740,7 +773,12 @@ function renderTeacherScores(container) {
         el("td", { class: "name-cell", text: r.name }),
         ...quizzes.map((q) => {
           const v = r.byQuiz?.[q.id];
-          return el("td", { class: "num", text: v != null ? String(v) : "–" });
+          if (v != null) return el("td", { class: "num", text: String(v) });
+          return el("td", { class: "num" }, [
+            isNoShow(r.byQuiz, q.id)
+              ? el("span", { class: "t-noshow", text: "미응시" })
+              : el("span", { class: "t-dash", text: "–" }),
+          ]);
         }),
       ])
     );

@@ -73,6 +73,18 @@ button.cell-toggle.on {
   color: var(--good-text);
   font-weight: 700;
 }
+button.cell-toggle.hold {
+  background: var(--warn-wash);
+  border-color: #ecd9a6;
+  color: #7a5b00;
+  font-weight: 700;
+}
+button.noshow-toggle.on {
+  background: #efeeea;
+  border-color: #b7b5ac;
+  color: #52514e;
+  font-weight: 700;
+}
 button.att-cell.att-p {
   background: #effaef;
   color: var(--good-text);
@@ -378,6 +390,14 @@ button.att-cell.att-x {
 .rd-check {
   color: var(--good-text);
   font-weight: 700;
+}
+.rd-hold {
+  color: #a36b00;
+  font-weight: 700;
+}
+.rd-noshow {
+  color: var(--muted);
+  font-size: 12px;
 }
 .rd-rate {
   min-width: 104px;

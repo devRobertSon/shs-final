@@ -2,7 +2,7 @@
 // 보고서는 브라우저 메모리에서만 만들어지고 인쇄(PDF 저장)로만 나간다.
 // 저장소에는 절대 커밋되지 않는다 (실명·점수 포함).
 import { el } from "./ui.js";
-import { sortWeeks, sortQuizzes, ATTENDANCE, ATTENDANCE_ORDER, toYMD } from "./store.js";
+import { sortWeeks, sortQuizzes, ATTENDANCE, ATTENDANCE_ORDER, toYMD, isNoShow } from "./store.js";
 
 // 입력:
 //   academyName, weeks(학원 blob), quizzes(학원 blob의 단원 퀴즈 목록),
@@ -139,35 +139,57 @@ export function buildDirectorReport({
         ])
       );
       let doneAll = 0;
+      let denomAll = 0;
+      let holdAll = 0;
+      const holdNames = [];
       for (const s of students) {
         const hw = s.blob.weeks?.[P.id]?.homework || {};
-        const done = items.filter((it) => hw[it.id]).length;
+        const done = items.filter((it) => hw[it.id] === true).length;
+        const holds = items.filter((it) => isNoShow(hw, it.id)).length;
+        if (holds) {
+          holdAll += holds;
+          holdNames.push(s.name);
+        }
+        const denom = items.length - holds;
         doneAll += done;
-        const rate = Math.round((done / items.length) * 100);
+        denomAll += denom;
+        const rate = denom ? Math.round((done / denom) * 100) : null;
         tbl.appendChild(
           el("tr", {}, [
             el("td", { class: "rd-name", text: s.name }),
             ...items.map((it) =>
               el("td", {}, [
-                hw[it.id]
+                hw[it.id] === true
                   ? el("span", { class: "rd-check", text: "✓" })
-                  : el("span", { class: "rd-dash", text: "–" }),
+                  : isNoShow(hw, it.id)
+                    ? el("span", { class: "rd-hold", text: "◌" })
+                    : el("span", { class: "rd-dash", text: "–" }),
               ])
             ),
             el("td", { class: "rd-rate" }, [
-              el("span", { class: "rd-bar", "aria-hidden": "true" }, [
-                el("span", { class: "rd-bar-fill", style: `width:${rate}%` }),
-              ]),
-              el("span", { text: `${rate}%` }),
+              rate == null
+                ? el("span", { class: "rd-hold", text: "확인 전" })
+                : el("span", { class: "rd-bar", "aria-hidden": "true" }, [
+                    el("span", { class: "rd-bar-fill", style: `width:${rate}%` }),
+                  ]),
+              rate == null ? null : el("span", { text: `${rate}%` }),
             ]),
           ])
         );
       }
-      const totalRate = students.length
-        ? Math.round((doneAll / (items.length * students.length)) * 100)
-        : 0;
+      const totalRate = denomAll ? Math.round((doneAll / denomAll) * 100) : 0;
       hwChildren.push(el("div", { class: "rd-table-wrap" }, [tbl]));
-      hwChildren.push(el("p", { class: "rd-note", text: `전체 완료율 · ${totalRate}%` }));
+      hwChildren.push(
+        el("p", {
+          class: "rd-note",
+          text:
+            `전체 완료율 · ${totalRate}%` +
+            (holdAll ? ` (◌ 확인 전 ${holdAll}건은 결석 등으로 제외)` : ""),
+        })
+      );
+      if (holdAll) {
+        info(`지난 주 숙제 '확인 전(◌)' — ${holdNames.join(", ")}: 다음 수업에서 확인 후 체크하세요.`);
+      }
     }
     doc.appendChild(section(`지난 주 숙제 수행 — ${P.label}`, hwChildren));
 
@@ -185,13 +207,17 @@ export function buildDirectorReport({
       warn(`지난 주(${P.label})에 등록된 단원 퀴즈가 없습니다.`);
       quizChildren.push(el("p", { class: "rd-empty", text: "(지난 주 퀴즈 없음)" }));
     } else {
-      // 퀴즈별 통계
+      // 퀴즈별 통계 (미응시 = null 저장 → 평균 제외·경고 아님 / 키 없음 = 미입력 → 경고)
       const perQuiz = quizzesP.map((q) => {
         const scores = students.map((s) => s.blob.quizzes?.[q.id]).filter((v) => v != null);
-        const missing = students.filter((s) => s.blob.quizzes?.[q.id] == null).map((s) => s.name);
+        const noshow = students.filter((s) => isNoShow(s.blob.quizzes, q.id)).map((s) => s.name);
+        const missing = students
+          .filter((s) => s.blob.quizzes?.[q.id] == null && !isNoShow(s.blob.quizzes, q.id))
+          .map((s) => s.name);
         return {
           q,
           scores,
+          noshow,
           missing,
           avg: scores.length ? round1(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
           hi: scores.length ? Math.max(...scores) : null,
@@ -201,6 +227,7 @@ export function buildDirectorReport({
       for (const pq of perQuiz) {
         if (!pq.scores.length) warn(`「${pq.q.unit}」 퀴즈 점수가 하나도 입력되지 않았습니다.`);
         else if (pq.missing.length) warn(`「${pq.q.unit}」 점수 미입력: ${pq.missing.join(", ")}`);
+        if (pq.noshow.length) info(`「${pq.q.unit}」 미응시(결석 등): ${pq.noshow.join(", ")} — 평균에서 제외됩니다.`);
       }
 
       // 단일 퀴즈면 통계 타일(학원 vs 전체), 복수면 퀴즈별 요약 줄
@@ -215,6 +242,11 @@ export function buildDirectorReport({
             statTile("최저", `${pq.lo}점`, `만점 ${pq.q.max || 100}점`),
           ])
         );
+        if (pq.noshow.length) {
+          quizChildren.push(
+            el("p", { class: "rd-note", text: `미응시(결석 등) · ${pq.noshow.join(", ")} — 평균에서 제외` })
+          );
+        }
       }
 
       // 통합 점수표: 이름 | 단원1 | 단원2 …
@@ -231,7 +263,12 @@ export function buildDirectorReport({
             el("td", { class: "rd-name", text: s.name }),
             ...quizzesP.map((q) => {
               const v = s.blob.quizzes?.[q.id];
-              return el("td", { class: "rd-score", text: v != null ? String(v) : "–" });
+              if (v != null) return el("td", { class: "rd-score", text: String(v) });
+              return el("td", { class: "rd-score" }, [
+                isNoShow(s.blob.quizzes, q.id)
+                  ? el("span", { class: "rd-noshow", text: "미응시" })
+                  : el("span", { class: "rd-dash", text: "–" }),
+              ]);
             }),
           ])
         );
@@ -247,7 +284,8 @@ export function buildDirectorReport({
               text:
                 `「${pq.q.unit}」 응시 ${pq.scores.length}명 · 학원 평균 ${pq.avg}점` +
                 (g?.avg != null ? ` · 전체 평균 ${g.avg}점(합산 ${g.count}명)` : "") +
-                ` · 최고 ${pq.hi}점 · 최저 ${pq.lo}점 (만점 ${pq.q.max || 100}점)`,
+                ` · 최고 ${pq.hi}점 · 최저 ${pq.lo}점 (만점 ${pq.q.max || 100}점)` +
+                (pq.noshow.length ? ` · 미응시 ${pq.noshow.length}명` : ""),
             })
           );
         }
