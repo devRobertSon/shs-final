@@ -419,6 +419,45 @@ function quizToolbar(container) {
   container.appendChild(bar);
 }
 
+// 같은 퀴즈(단원명·주차·만점)를 다른 학원들에도 만든다.
+// 대상 학원에 같은 주차(id)가 없으면 주차도 함께 만든다 (수업일은 비워 둠).
+// 같은 주차에 같은 단원명이 이미 있으면 건너뛴다 (중복 방지).
+// 반환: { made: [학원명], weekMade: [학원명] }
+function copyQuizToOtherAcademies(unit, weekId, max) {
+  const norm = (s) => String(s || "").trim().replace(/\s+/g, " ");
+  const srcWeek = (academyBlob().weeks || []).find((w) => w.id === weekId);
+  const made = [];
+  const weekMade = [];
+  for (const a of S.roster.academies) {
+    if (a.fileId === S.selAcademy) continue;
+    const ab = S.academies.get(a.fileId);
+    if (!ab) continue;
+    ab.weeks = ab.weeks || [];
+    let w = ab.weeks.find((x) => x.id === weekId);
+    if (!w) {
+      w = { id: srcWeek.id, label: srcWeek.label, sessions: [], homework: [], progress: "" };
+      ab.weeks.push(w);
+      weekMade.push(a.name);
+    }
+    ab.quizzes = ab.quizzes || [];
+    if (ab.quizzes.some((x) => x.weekId === weekId && norm(x.unit) === norm(unit))) continue;
+    ab.quizzes.push({ id: randomHexId(6), unit, weekId, max, stats: null });
+    markAcademy(a.fileId);
+    made.push(a.name);
+  }
+  return { made, weekMade };
+}
+
+function copyResultToast(unit, { made, weekMade }) {
+  if (!made.length) {
+    toast("다른 학원에 이미 같은 단원 퀴즈가 있습니다.", "ok");
+    return;
+  }
+  let msg = `'${unit}' 퀴즈를 ${made.join(", ")}에도 만들었습니다.`;
+  if (weekMade.length) msg += ` 주차도 함께 만들었으니 수업일은 '주차 관리'에서 입력하세요 (${weekMade.join(", ")}).`;
+  toast(msg + " '발행'해야 반영됩니다.", "ok");
+}
+
 // 퀴즈(단원) 생성/편집/삭제 모달
 function editQuiz(quiz) {
   const blob = academyBlob();
@@ -427,6 +466,7 @@ function editQuiz(quiz) {
     toast("먼저 '주차 관리'(숙제/출석 탭)에서 주차를 만들어 주세요.", "error");
     return;
   }
+  const multiAcademy = S.roster.academies.length > 1;
   const unitIn = el("input", { type: "text", value: quiz?.unit || "", placeholder: "단원명 (예: 화학 — 몰 농도)" });
   const weekSel = el("select");
   const defaultWeek = quiz?.weekId || selectedWeek()?.id;
@@ -434,6 +474,7 @@ function editQuiz(quiz) {
     weekSel.appendChild(el("option", { value: w.id, text: w.label, selected: w.id === defaultWeek }));
   }
   const maxIn = el("input", { type: "number", value: String(quiz?.max || 100), min: "1" });
+  const allChk = el("input", { type: "checkbox", checked: true });
   const err = el("p", { class: "error-text" });
   const overlay = el("div", { class: "modal-overlay" });
   overlay.appendChild(
@@ -441,11 +482,28 @@ function editQuiz(quiz) {
       el("h3", { text: quiz ? "퀴즈 관리" : "새 단원 퀴즈" }),
       el("p", {
         class: "hint",
-        text: "두 학원에서 같은 단원명으로 퀴즈를 만들면 전체 평균이 두 학원 학생을 합쳐 계산됩니다.",
+        text: "같은 단원명의 퀴즈는 전체 평균이 두 학원 학생을 합쳐 계산됩니다.",
       }),
       el("label", { class: "field" }, [el("span", { text: "단원명" }), unitIn]),
       el("label", { class: "field" }, [el("span", { text: "응시 주차" }), weekSel]),
       el("label", { class: "field" }, [el("span", { text: "만점" }), maxIn]),
+      !quiz && multiAcademy
+        ? el("label", { class: "check" }, [allChk, "다른 학원에도 함께 만들기 (같은 단원·주차·만점)"])
+        : null,
+      quiz && multiAcademy
+        ? el("button", {
+            class: "btn btn-small",
+            text: "이 퀴즈를 다른 학원으로 복사",
+            onclick: () => {
+              const unit = unitIn.value.trim();
+              if (!unit) return (err.textContent = "단원명을 입력해 주세요.");
+              const result = copyQuizToOtherAcademies(unit, weekSel.value, parseFloat(maxIn.value) || 100);
+              copyResultToast(unit, result);
+              overlay.remove();
+              renderTab();
+            },
+          })
+        : null,
       err,
       el("div", { class: "modal-actions" }, [
         quiz
@@ -487,6 +545,9 @@ function editQuiz(quiz) {
               blob.quizzes.push(q);
               S.selQuiz.set(S.selAcademy, q.id);
               markAcademy(S.selAcademy);
+              if (multiAcademy && allChk.checked) {
+                copyResultToast(unit, copyQuizToOtherAcademies(unit, weekSel.value, max));
+              }
             }
             overlay.remove();
             renderTab();
