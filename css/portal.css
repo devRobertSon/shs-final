@@ -152,6 +152,9 @@ li.hw-done .hw-text {
   gap: 8px;
   margin-bottom: 14px;
 }
+.stat-row.two {
+  grid-template-columns: repeat(2, 1fr);
+}
 .stat-tile {
   background: var(--page);
   border: 1px solid var(--hairline);

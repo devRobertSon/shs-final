@@ -107,6 +107,7 @@ export async function copyText(text, successMsg = "복사되었습니다. 카톡
 
 // ---------- 탭 ----------
 // tabs: [{id, label}], onSelect(id). 반환: {select(id), setBadge(id, on)}
+// 모바일에서 탭이 잘릴 때 좌우 페이드+화살표로 "옆으로 더 있음"을 표시한다.
 export function tabBar(container, tabs, onSelect) {
   const bar = el("div", { class: "tabbar", role: "tablist" });
   const buttons = new Map();
@@ -114,6 +115,7 @@ export function tabBar(container, tabs, onSelect) {
     for (const [tid, btn] of buttons) {
       btn.classList.toggle("active", tid === id);
       btn.setAttribute("aria-selected", tid === id ? "true" : "false");
+      if (tid === id) btn.scrollIntoView({ block: "nearest", inline: "nearest" });
     }
     onSelect(id);
   };
@@ -127,7 +129,19 @@ export function tabBar(container, tabs, onSelect) {
     buttons.set(t.id, btn);
     bar.appendChild(btn);
   }
-  container.appendChild(bar);
+  const wrap = el("div", { class: "tabbar-wrap" }, [
+    bar,
+    el("div", { class: "tab-fade left", "aria-hidden": "true", text: "‹" }),
+    el("div", { class: "tab-fade right", "aria-hidden": "true", text: "›" }),
+  ]);
+  const updateFades = () => {
+    wrap.classList.toggle("more-left", bar.scrollLeft > 2);
+    wrap.classList.toggle("more-right", bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 2);
+  };
+  bar.addEventListener("scroll", updateFades, { passive: true });
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(updateFades).observe(bar);
+  requestAnimationFrame(updateFades);
+  container.appendChild(wrap);
   // 새 소식 배지(●) — on이면 탭 라벨 뒤에 빨간 점 표시
   const setBadge = (id, on) => {
     const btn = buttons.get(id);

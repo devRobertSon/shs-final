@@ -333,26 +333,26 @@ function renderQuiz(container) {
     return;
   }
 
-  // 최근 응시 퀴즈 요약
+  // 요약: 지금까지 본 모든 퀴즈 기준 — 내 점수 평균 vs 전체 평균(전 퀴즈 평균의 평균)
   const taken = quizzes.filter((q) => myScores[q.id] != null);
-  const latest = taken.length ? taken[taken.length - 1] : null;
-  if (latest) {
+  if (taken.length) {
+    const myAvg = round1(taken.reduce((a, q) => a + myScores[q.id], 0) / taken.length);
+    const withStats = quizzes.filter((q) => q.stats?.avg != null);
+    const allAvg = withStats.length
+      ? round1(withStats.reduce((a, q) => a + q.stats.avg, 0) / withStats.length)
+      : null;
     card.appendChild(
-      el("p", {
-        class: "hint",
-        text: `최근 퀴즈 · ${latest.unit} (${shortLabel(weekLabelOf(academy.weeks, latest.weekId)) || "주차 미정"})`,
-      })
+      el("p", { class: "hint", text: `지금까지 응시한 단원 퀴즈 ${taken.length}개 기준` })
     );
     card.appendChild(
-      el("div", { class: "stat-row" }, [
-        statTile("내 점수", String(myScores[latest.id]), `만점 ${latest.max || 100}`),
-        statTile("전체 평균", latest.stats?.avg != null ? String(latest.stats.avg) : "–", ""),
-        statTile("응시 인원", latest.stats?.count != null ? `${latest.stats.count}명` : "–", ""),
+      el("div", { class: "stat-row two" }, [
+        statTile("내 평균", String(myAvg), ""),
+        statTile("전체 평균", allAvg != null ? String(allAvg) : "–", ""),
       ])
     );
   }
 
-  // 추이 그래프 (단원 응시 순)
+  // 추이 그래프 (단원 응시 순, 만점 = 실제 퀴즈 만점 기준)
   card.appendChild(el("h2", { text: "점수 추이" }));
   const chartBox = el("div");
   card.appendChild(chartBox);
@@ -360,25 +360,41 @@ function renderQuiz(container) {
     weeks: quizzes.map((q) => ({ id: q.id, label: q.unit })),
     mine: quizzes.map((q) => (myScores[q.id] != null ? myScores[q.id] : null)),
     avg: quizzes.map((q) => (q.stats?.avg != null ? q.stats.avg : null)),
-    yMax: Math.max(100, ...quizzes.map((q) => q.max || 0)),
+    yMax: Math.max(...quizzes.map((q) => q.max || 100)),
   });
 
-  // 전체 목록 (최신 순)
+  // 단원명에서 "-" 앞부분(과목 접두어) 제거: "물리 - 여러 가지 힘" → "여러 가지 힘"
+  const unitShort = (unit) => {
+    const m = String(unit || "").match(/[-–—]\s*(.+)$/);
+    return m ? m[1].trim() : unit;
+  };
+  // 주차 대신 날짜: 라벨의 괄호 안 날짜 → 수업일 범위 → 라벨 순으로 사용
+  const quizDateText = (q) => {
+    const w = (academy.weeks || []).find((x) => x.id === q.weekId);
+    if (!w) return "미정";
+    const m = (w.label || "").match(/\(([^)]+)\)/);
+    if (m) return m[1];
+    const ss = w.sessions || [];
+    const f = (d) => `${parseInt(d.slice(5, 7), 10)}/${parseInt(d.slice(8, 10), 10)}`;
+    if (ss.length) return ss.length > 1 ? `${f(ss[0])}~${f(ss[ss.length - 1])}` : f(ss[0]);
+    return shortLabel(w.label) || "미정";
+  };
+
+  // 전체 목록 (최신 순): 단원 | 내 점수 | 전체 평균 | 날짜
   card.appendChild(el("h2", { text: "퀴즈 목록", style: "margin-top:16px" }));
   const tbl = el("table", { class: "grid" });
   tbl.appendChild(
     el("tr", {}, [
       el("th", { class: "name-cell", text: "단원" }),
-      el("th", { text: "주차" }),
       el("th", { text: "내 점수" }),
       el("th", { text: "전체 평균" }),
+      el("th", { text: "날짜" }),
     ])
   );
   for (const q of [...quizzes].reverse()) {
     tbl.appendChild(
       el("tr", {}, [
-        el("td", { class: "name-cell", text: q.unit }),
-        el("td", { text: shortLabel(weekLabelOf(academy.weeks, q.weekId)) || "미정" }),
+        el("td", { class: "name-cell", text: unitShort(q.unit) }),
         el("td", {
           class: "num",
           text:
@@ -389,11 +405,16 @@ function renderQuiz(container) {
                 : "–",
         }),
         el("td", { class: "num", text: q.stats?.avg != null ? String(q.stats.avg) : "–" }),
+        el("td", { text: quizDateText(q) }),
       ])
     );
   }
   card.appendChild(el("div", { class: "table-wrap" }, [tbl]));
   container.appendChild(card);
+}
+
+function round1(v) {
+  return Math.round(v * 10) / 10;
 }
 
 function shortLabel(label) {

@@ -191,6 +191,45 @@ label.field > span {
   padding: 8px 0;
   border-bottom: 1px solid var(--hairline);
 }
+/* 포털용 래퍼: 탭이 잘려 있음을 좌우 페이드+화살표로 표시 (관리 페이지의 단독 .tabbar는 그대로) */
+.tabbar-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.tabbar-wrap .tabbar {
+  position: static;
+}
+.tab-fade {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  width: 34px;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+}
+.tab-fade.right {
+  right: 0;
+  justify-content: flex-end;
+  padding-right: 2px;
+  background: linear-gradient(to left, var(--page) 35%, rgba(255, 255, 255, 0));
+}
+.tab-fade.left {
+  left: 0;
+  justify-content: flex-start;
+  padding-left: 2px;
+  background: linear-gradient(to right, var(--page) 35%, rgba(255, 255, 255, 0));
+}
+.tabbar-wrap.more-right .tab-fade.right,
+.tabbar-wrap.more-left .tab-fade.left {
+  opacity: 1;
+}
 .tabbar::-webkit-scrollbar {
   display: none;
 }
