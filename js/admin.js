@@ -43,6 +43,9 @@ const S = {
   selWeek: new Map(), // academyFileId -> weekId
   selQuiz: new Map(), // academyFileId -> quizId
   zipDownloaded: false,
+  // 이 세션이 불러왔거나 스스로 만든 발행 시각들 — 발행 직전에 사이트의 발행 시각이
+  // 여기 없으면 다른 탭/기기의 발행을 덮어쓰는 상황이므로 경고한다
+  ownPublishedAts: new Set(),
 };
 
 const dirtyCount = () =>
@@ -192,6 +195,7 @@ function renderLogin(errorMsg) {
 
 async function loadAll(password) {
   S.meta = await fetchJSON("data/meta.json");
+  S.ownPublishedAts = new Set(S.meta.publishedAt ? [S.meta.publishedAt] : []);
   S.masterKey = await deriveMasterKey(password, S.meta.saltMaster, S.meta.kdf.iterMaster);
   const rosterEnv = await fetchJSON("data/roster.json");
   S.roster = await decryptJSON(S.masterKey, rosterEnv); // 실패 시 OperationError = 비밀번호 오류
@@ -251,6 +255,7 @@ function renderRestore() {
             const backup = JSON.parse(await file.files[0].text());
             if (!backup.meta || !backup.roster) throw new Error("올바른 백업 파일이 아닙니다.");
             S.meta = backup.meta;
+            S.ownPublishedAts = new Set(backup.meta.publishedAt ? [backup.meta.publishedAt] : []);
             S.roster = backup.roster;
             S.academies = new Map(Object.entries(backup.academies || {}));
             S.students = new Map(Object.entries(backup.students || {}));
@@ -2018,6 +2023,46 @@ function renderDirectorTab(container) {
 }
 
 // ---------- ⑩ 발행 ----------
+// 발행 직전 안전장치: 이 화면을 연 뒤 다른 탭/기기에서 발행된 적이 있으면
+// 지금 발행이 그 내용을 이전 상태로 되돌릴 수 있으므로 경고한다.
+// 토큰이 있으면 저장소에서 직접(Pages 반영 지연과 무관), 없으면 사이트의 meta.json으로 확인.
+async function confirmNotStale(token, repo) {
+  if (!S.ownPublishedAts.size) return true; // 첫 발행·마법사 직후 등 비교 기준 없음
+  let siteAt = null;
+  try {
+    if (token && repo?.owner && repo?.name) {
+      const res = await fetch(
+        `https://api.github.com/repos/${repo.owner}/${repo.name}/contents/data/meta.json?ref=${encodeURIComponent(repo.branch || "main")}`,
+        {
+          headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github.raw+json" },
+          cache: "no-store",
+        }
+      );
+      if (res.ok) siteAt = (await res.json()).publishedAt || null;
+    }
+    if (siteAt == null) {
+      const res = await fetch("data/meta.json?t=" + Date.now(), { cache: "no-store" });
+      if (res.ok) siteAt = (await res.json()).publishedAt || null;
+    }
+  } catch {
+    /* 확인 실패(오프라인 등) → 발행을 막지 않는다 */
+  }
+  if (siteAt == null || S.ownPublishedAts.has(siteAt)) return true;
+  const fmt = (iso) => new Date(iso).toLocaleString("ko-KR");
+  const mine = [...S.ownPublishedAts].pop(); // 이 세션의 가장 최근 기준 시각
+  return confirmModal({
+    title: "⚠️ 다른 곳에서 발행된 뒤입니다",
+    body:
+      `이 관리 화면을 연 이후에 다른 탭이나 기기에서 발행이 있었습니다.\n\n` +
+      `· 이 화면이 아는 발행: ${fmt(mine)}\n` +
+      `· 사이트의 최신 발행: ${fmt(siteAt)}\n\n` +
+      `지금 발행하면 그 사이에 올라간 공지·점수 등의 변경이 이전 상태로 덮어써질 수 있습니다.\n` +
+      `안전하게 하려면 취소한 뒤 페이지를 새로고침해 다시 로그인하고 작업해 주세요.`,
+    okText: "위험을 알고 발행",
+    danger: true,
+  });
+}
+
 function renderPublishTab(container) {
   const card = el("div", { class: "card" }, [el("h2", { text: "발행" })]);
   card.appendChild(
@@ -2070,6 +2115,12 @@ function renderPublishTab(container) {
     publishBtn.disabled = true;
     log.textContent = "";
     try {
+      logLine("사이트 최신 발행 확인 중…");
+      if (!(await confirmNotStale(token, repo))) {
+        logLine("발행을 취소했습니다. 새로고침 후 다시 로그인하면 최신 상태에서 작업할 수 있습니다.");
+        publishBtn.disabled = false;
+        return;
+      }
       logLine("데이터 암호화 중…");
       const { files, deletes } = await buildPublishFiles("api");
       const stamp = toYMD(new Date());
@@ -2100,6 +2151,10 @@ function renderPublishTab(container) {
     saveRepo();
     zipBtn.disabled = true;
     try {
+      if (!(await confirmNotStale(patIn.value.trim() || null, repo))) {
+        zipBtn.disabled = false;
+        return;
+      }
       const { files } = await buildPublishFiles("zip");
       const zipFiles = files.map((f) => ({ path: f.path, bytes: f.bytes }));
       const stamp = toYMD(new Date()).replaceAll("-", "");
@@ -2359,6 +2414,7 @@ async function buildPublishFiles(mode) {
   S.meta.academies = S.roster.academies.map((a) => a.fileId);
   S.meta.teachers = (S.roster.teachers || []).map((t) => t.fileId);
   S.meta.publishedAt = new Date().toISOString();
+  S.ownPublishedAts.add(S.meta.publishedAt); // 이 세션의 발행(ZIP 포함)은 충돌 경고 대상이 아님
 
   const files = [];
   const push = (path, bytes) => {
