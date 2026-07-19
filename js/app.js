@@ -355,11 +355,12 @@ function renderQuiz(container) {
     return;
   }
 
-  // 요약: 지금까지 본 모든 퀴즈 기준 — 내 점수 평균 vs 전체 평균(전 퀴즈 평균의 평균)
+  // 요약: 두 타일 모두 '내가 응시한 퀴즈' 기준으로 통일 — 내 평균과 전체 평균이
+  // 같은 퀴즈 집합을 비교하므로, 목록의 응시한 행들로 검산해도 일치한다
   const taken = quizzes.filter((q) => myScores[q.id] != null);
   if (taken.length) {
     const myAvg = round1(taken.reduce((a, q) => a + myScores[q.id], 0) / taken.length);
-    const withStats = quizzes.filter((q) => q.stats?.avg != null);
+    const withStats = taken.filter((q) => q.stats?.avg != null);
     const allAvg = withStats.length
       ? round1(withStats.reduce((a, q) => a + q.stats.avg, 0) / withStats.length)
       : null;
