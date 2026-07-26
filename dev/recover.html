@@ -248,7 +248,7 @@
           // ---- 주차별 기록: 진도 · 숙제 항목 · 출석/숙제 체크 매트릭스 ----
           card.appendChild(el("h3", { text: "주차별 출석 · 진도 · 숙제 체크" }));
           if (weeks.length && students.length) {
-            card.appendChild(el("p", { class: "hint", style: "margin:0 0 4px", text: "숙제 표기: ✓ 완료 · ◌ 확인 전(보류) · 빈칸 = 미완료" }));
+            card.appendChild(el("p", { class: "hint", style: "margin:0 0 4px", text: "숙제 표기: ✓ 완료 · ◌ 확인 전(보류) · － 해당 없음(수강 전 등) · 빈칸 = 안 함" }));
           }
           if (!weeks.length) card.appendChild(el("p", { class: "empty", text: "주차 없음" }));
           const fmtD = (d) => `${parseInt(d.slice(5, 7), 10)}/${parseInt(d.slice(8, 10), 10)}`;
@@ -296,7 +296,8 @@
                   ...hwItems.map((h) => {
                     const hw = sBlobs.get(st.fileId)?.weeks?.[w.id]?.homework || {};
                     if (!(h.id in hw)) return el("td", { text: "" });
-                    return hw[h.id] ? el("td", { text: "✓" }) : el("td", { class: "dim", text: "◌" });
+                    if (hw[h.id] === true) return el("td", { text: "✓" });
+                    return el("td", { class: "dim", text: hw[h.id] === null ? "◌" : "－" });
                   }),
                 ])
               );

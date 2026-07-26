@@ -142,14 +142,21 @@ export const ATTENDANCE = {
   M: { label: "보강", cls: "att-m" },
   E: { label: "조퇴", cls: "att-e" },
   X: { label: "공결", cls: "att-x" },
+  N: { label: "수강 전", cls: "att-n" }, // 중간 합류 학생의 등록 전 수업일 — 결석·미입력과 구분
 };
-export const ATTENDANCE_ORDER = ["P", "L", "A", "M", "E", "X"];
+export const ATTENDANCE_ORDER = ["P", "L", "A", "M", "E", "X", "N"];
 
 // 결석 관련 상태는 값 null로 저장한다 (키 자체가 없으면 미입력/미완료):
 // - 퀴즈: student.quizzes[quizId] === null → 미응시 (평균·응시 인원에서 제외)
 // - 숙제: student.weeks[wid].homework[itemId] === null → 확인 전(결석 보류, 완료율에서 제외)
 export function isNoShow(map, id) {
   return !!map && id in map && map[id] === null;
+}
+
+// 숙제 '해당 없음'(－): 값 false — 수강 전(중간 합류) 등으로 그 숙제의 대상이 아니었던 경우.
+// 완료율 분모에서 제외되며, '안 함(빈칸)'·'확인 전(◌)'과 구분된다.
+export function isNA(map, id) {
+  return !!map && id in map && map[id] === false;
 }
 
 // 접속 통계 핑 URL — 저장소 릴리스(visit-counter)의 작은 첨부 파일 주소.

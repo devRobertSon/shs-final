@@ -223,8 +223,10 @@ async function main() {
       A.weeks.forEach((w, wi) => {
         const hwItems = HOMEWORK.slice(0, 2 + (wi % 2));
         const hw = {};
+        // 완료(true)만 키로 저장 — '안 함'은 키 없음 (admin 체크 UI와 동일 규칙;
+        // false는 '해당 없음(－)' 전용이라 일반 미완료에 쓰지 않는다)
         hwItems.forEach((item, hi) => {
-          hw[item.id] = (si + hi + wi) % 3 !== 0;
+          if ((si + hi + wi) % 3 !== 0) hw[item.id] = true;
         });
         const attendance = {};
         for (const [di, d] of w.sessions.entries()) {
@@ -237,6 +239,16 @@ async function main() {
       // 숙제 '확인 전(결석 보류)' 샘플: 박서연은 W26 결석 → hw1을 null(◌)로 보류
       if (A.name === "한빛학원" && name === "박서연") {
         weeksData["2026-W26"].homework.hw1 = null;
+      }
+      // 중간 합류 샘플: 윤재원(미래)은 W25 이후 합류 → W25 숙제 전 항목 '해당 없음(－)' = false,
+      // W25 출석은 전부 '수강 전(N)'
+      if (A.name === "미래학원" && name === "윤재원" && weeksData["2026-W25"]) {
+        const wi = A.weeks.findIndex((w) => w.id === "2026-W25");
+        const its = HOMEWORK.slice(0, 2 + (wi % 2));
+        weeksData["2026-W25"].homework = Object.fromEntries(its.map((it) => [it.id, false]));
+        for (const d of Object.keys(weeksData["2026-W25"].attendance)) {
+          weeksData["2026-W25"].attendance[d] = "N";
+        }
       }
 
       // 단원 퀴즈 점수 (scores 배열의 null = 미응시 → null 그대로 저장, 평균 제외)
@@ -402,6 +414,7 @@ ${teacherLines.join("\n")}
 - 박서연(한빛) — 「화학: 몰 개념」 **미응시**(결석, 평균 제외) + W26 숙제 1번 **확인 전(◌)**
 - 한시우(미래) — 「물리: 자유낙하」 **미응시**
 - 강민준(미래) — 「화학: 화학 결합」 **미수강 응시**(81점 — 점수 기록·평균 제외)
+- 윤재원(미래) — W25(6월 3주차) 숙제 전부 **해당 없음(－)** + 출석 전부 **수강 전** (중간 합류)
 
 > 이 파일은 \`node dev/make-sample.mjs\` 실행 시마다 새로 생성됩니다.
 `;
