@@ -210,6 +210,7 @@
   .print-report .rd-hold { color: #a36b00; font-weight: 700; }
   .print-report .rd-noshow { color: #898781; font-size: 9pt; }
   .print-report .rd-nc { font-weight: 700; }
+  .print-report .rd-na { color: #52514e; }
   .print-report .rd-bar {
     display: inline-block;
     width: 40pt;

@@ -79,6 +79,22 @@ button.cell-toggle.hold {
   color: #7a5b00;
   font-weight: 700;
 }
+button.cell-toggle.na {
+  background: #efeeea;
+  border-color: #b7b5ac;
+  color: #52514e;
+  font-weight: 700;
+}
+/* 숙제 체크 표의 주차 출석 열 */
+td.hw-att {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+td.hw-att.abs {
+  color: #d03b3b;
+  font-weight: 600;
+}
 button.noshow-toggle.on {
   background: #efeeea;
   border-color: #b7b5ac;

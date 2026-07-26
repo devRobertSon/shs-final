@@ -10,6 +10,7 @@ import {
   formatBytes,
   ATTENDANCE,
   isNoShow,
+  isNA,
   toYMD,
   visitPingURL,
 } from "./store.js";
@@ -295,12 +296,22 @@ function renderHomework(container, weeks) {
     return ss.length ? `${fmtDateK(ss[0])} 숙제` : `${week.label} 숙제`;
   };
   let anyHold = false;
+  let anyNA = false;
   for (const week of withHw) {
     const items = week.homework;
     const status = weekData(week.id).homework || {};
     const doneCount = items.filter((it) => status[it.id] === true).length;
     const holdCount = items.filter((it) => isNoShow(status, it.id)).length;
+    const naCount = items.filter((it) => isNA(status, it.id)).length;
     if (holdCount) anyHold = true;
+    if (naCount) anyNA = true;
+    const denom = items.length - holdCount - naCount;
+    const progressText =
+      !denom && naCount && !holdCount
+        ? "이 주 숙제 대상 아님 (수강 전 등)"
+        : `완료 ${doneCount} / ${denom}` +
+          (holdCount ? ` · 확인 전 ${holdCount}` : "") +
+          (naCount ? ` · 해당 없음 ${naCount}` : "");
     const block = el("div", { class: "week-block" }, [
       el("div", { class: "wb-head" }, [
         el("span", { class: "wb-label", text: hwBlockTitle(week) }),
@@ -311,22 +322,18 @@ function renderHomework(container, weeks) {
           onclick: () => copyText(homeworkShareText(session.academy.name, week)),
         }),
       ]),
-      el("p", {
-        class: "hw-progress",
-        text:
-          `완료 ${doneCount} / ${items.length - holdCount}` +
-          (holdCount ? ` · 확인 전 ${holdCount}` : ""),
-      }),
+      el("p", { class: "hw-progress", text: progressText }),
     ]);
     const ul = el("ul", { class: "hw-list" });
     for (const it of items) {
       const done = status[it.id] === true;
       const hold = isNoShow(status, it.id);
+      const na = isNA(status, it.id);
       ul.appendChild(
         el("li", { class: done ? "hw-done" : "" }, [
           el("span", {
-            class: `hw-mark ${done ? "done" : hold ? "hold" : "todo"}`,
-            text: done ? "✓" : hold ? "◌" : "",
+            class: `hw-mark ${done ? "done" : hold ? "hold" : na ? "na" : "todo"}`,
+            text: done ? "✓" : hold ? "◌" : na ? "－" : "",
           }),
           el("span", { class: "hw-text", text: it.text }),
         ])
@@ -338,6 +345,11 @@ function renderHomework(container, weeks) {
   if (anyHold) {
     card.appendChild(
       el("p", { class: "hint", text: "◌ 결석 등으로 아직 확인하지 못한 숙제입니다. 다음 수업에서 확인합니다." })
+    );
+  }
+  if (anyNA) {
+    card.appendChild(
+      el("p", { class: "hint", text: "－ 수강 전(중간 등록) 등으로 이 숙제의 대상이 아니어서 완료율에서 제외된 항목입니다." })
     );
   }
   container.appendChild(card);
@@ -858,12 +870,13 @@ function renderTeacherHomework(container, weeks) {
     byWeek.set(w.id, m);
   }
 
-  // 학생·주차별 완료율 (◌ 확인 전은 분모에서 제외)
+  // 학생·주차별 완료율 (◌ 확인 전·－ 해당 없음은 분모에서 제외)
   const rateOf = (byItem, items) => {
     const done = items.filter((it) => byItem?.[it.id] === true).length;
     const holds = items.filter((it) => isNoShow(byItem, it.id)).length;
-    const denom = items.length - holds;
-    return { done, holds, denom };
+    const nas = items.filter((it) => isNA(byItem, it.id)).length;
+    const denom = items.length - holds - nas;
+    return { done, holds, nas, denom };
   };
   const shortWeek = (w) => shortLabel(w.label) || w.id;
 
@@ -875,15 +888,23 @@ function renderTeacherHomework(container, weeks) {
     ])
   );
   let anyHold = false;
+  let anyNA = false;
   for (const name of names) {
     tbl.appendChild(
       el("tr", {}, [
         el("td", { class: "name-cell", text: name }),
         ...hwWeeks.map((w) => {
-          const { done, holds, denom } = rateOf(byWeek.get(w.id).get(name), w.homework);
+          const { done, holds, nas, denom } = rateOf(byWeek.get(w.id).get(name), w.homework);
           if (holds) anyHold = true;
-          if (!denom) return el("td", { class: "num" }, [el("span", { class: "hw-hold", text: "◌" })]);
-          return el("td", { class: "num", text: `${Math.round((done / denom) * 100)}%${holds ? " ◌" : ""}` });
+          if (nas) anyNA = true;
+          if (!denom) {
+            const mark = holds ? "◌" : nas ? "－" : "◌";
+            return el("td", { class: "num" }, [el("span", { class: nas && !holds ? "hw-na" : "hw-hold", text: mark })]);
+          }
+          return el("td", {
+            class: "num",
+            text: `${Math.round((done / denom) * 100)}%${holds ? " ◌" : ""}${nas ? " －" : ""}`,
+          });
         }),
       ])
     );
@@ -904,10 +925,11 @@ function renderTeacherHomework(container, weeks) {
   }
   tbl.appendChild(avgRow);
   card.appendChild(el("div", { class: "table-wrap" }, [tbl]));
-  if (anyHold) {
-    card.appendChild(
-      el("p", { class: "hint", text: "◌ = 결석 등으로 확인 전인 숙제 포함 (완료율 계산에서 제외)" })
-    );
+  if (anyHold || anyNA) {
+    const parts = [];
+    if (anyHold) parts.push("◌ = 결석 등으로 확인 전인 숙제 포함 (완료율 계산에서 제외)");
+    if (anyNA) parts.push("－ = 수강 전 등 해당 없음 (완료율 계산에서 제외)");
+    card.appendChild(el("p", { class: "hint", text: parts.join(" · ") }));
   }
   container.appendChild(card);
 }

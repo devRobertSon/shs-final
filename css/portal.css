@@ -136,6 +136,11 @@
   color: #7a5b00;
   border: 1px dashed #ecd9a6;
 }
+.hw-mark.na {
+  background: var(--page);
+  color: #52514e;
+  border: 1px dashed #b7b5ac;
+}
 li.hw-done .hw-text {
   color: var(--muted);
 }
@@ -458,6 +463,10 @@ button.cal-day.sel {
 }
 .hw-hold {
   color: #a36b00;
+  font-weight: 700;
+}
+.hw-na {
+  color: #52514e;
   font-weight: 700;
 }
 .t-noshow {

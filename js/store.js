@@ -152,6 +152,12 @@ export function isNoShow(map, id) {
   return !!map && id in map && map[id] === null;
 }
 
+// 숙제 '해당 없음'(－): 값 false — 수강 전(중간 합류) 등으로 그 숙제의 대상이 아니었던 경우.
+// 완료율 분모에서 제외되며, '안 함(빈칸)'·'확인 전(◌)'과 구분된다.
+export function isNA(map, id) {
+  return !!map && id in map && map[id] === false;
+}
+
 // 접속 통계 핑 URL — 저장소 릴리스(visit-counter)의 작은 첨부 파일 주소.
 // 이 파일을 받아가면 GitHub이 다운로드 횟수를 +1 세고, 관리 페이지가 그 수를 읽는다.
 // GitHub Pages(*.github.io)에서만 주소를 만들 수 있고 그 외(localhost 등)는 null.

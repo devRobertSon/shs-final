@@ -17,7 +17,7 @@ import {
   normalizePassword,
   b64encode,
 } from "./crypto.js";
-import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER, isNoShow } from "./store.js";
+import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER, isNoShow, isNA } from "./store.js";
 import { $, el, clear, toast, confirmModal, copyText, setBusy } from "./ui.js";
 import { runWizard, createStudent, emptyStudentBlob, emptyAcademyBlob, printCodeCards } from "./setup.js";
 import { buildDirectorReport } from "./report.js";
@@ -1437,11 +1437,14 @@ function renderHomeworkTab(container) {
   renderItems();
   card.appendChild(itemsBox);
 
-  // 체크 그리드
+  // 체크 그리드 — 이름 옆에 이 주차 출석을 함께 보여줘 결석·수강 전 학생을 구분하기 쉽게 한다
   if (week.homework.length) {
     const students = activeStudentsOf(S.selAcademy);
     const tbl = el("table", { class: "grid", style: "margin-top:12px" });
-    const header = el("tr", {}, [el("th", { class: "name-cell", text: "이름" })]);
+    const header = el("tr", {}, [
+      el("th", { class: "name-cell", text: "이름" }),
+      el("th", { text: "출석" }),
+    ]);
     week.homework.forEach((item, idx) => {
       const th = el("th", {}, [
         el("div", { text: `${idx + 1}번` }),
@@ -1454,8 +1457,8 @@ function renderHomeworkTab(container) {
               blob.weeks[week.id] = blob.weeks[week.id] || {};
               blob.weeks[week.id].homework = blob.weeks[week.id].homework || {};
               const hw = blob.weeks[week.id].homework;
-              // 확인 전(◌)은 결석 학생이므로 전체 완료로 덮어쓰지 않는다
-              if (hw[item.id] !== true && !isNoShow(hw, item.id)) {
+              // 확인 전(◌)·해당 없음(－)은 전체 완료로 덮어쓰지 않는다
+              if (hw[item.id] !== true && !isNoShow(hw, item.id) && !isNA(hw, item.id)) {
                 hw[item.id] = true;
                 markStudent(st.fileId);
               }
@@ -1468,17 +1471,29 @@ function renderHomeworkTab(container) {
     });
     tbl.appendChild(header);
 
-    // 칸 상태: 빈칸(미완료) → ✓(완료) → ◌(확인 전 = 결석 보류, 완료율 제외) → 빈칸
-    const stateOf = (hw, id) => (hw?.[id] === true ? "done" : isNoShow(hw, id) ? "hold" : "none");
+    // 칸 상태: 빈칸(안 함) → ✓(완료) → ◌(확인 전 = 결석 보류) → －(해당 없음 = 수강 전 등) → 빈칸
+    // ◌와 －는 완료율 분모에서 제외된다. －는 '안 함'과 구분되는 상태.
+    const stateOf = (hw, id) =>
+      hw?.[id] === true ? "done" : isNoShow(hw, id) ? "hold" : isNA(hw, id) ? "na" : "none";
     const applyBtn = (btn, state) => {
       btn.classList.toggle("on", state === "done");
       btn.classList.toggle("hold", state === "hold");
-      btn.textContent = state === "done" ? "✓" : state === "hold" ? "◌" : "";
+      btn.classList.toggle("na", state === "na");
+      btn.textContent = state === "done" ? "✓" : state === "hold" ? "◌" : state === "na" ? "－" : "";
     };
     for (const st of students) {
-      const row = el("tr", {}, [el("td", { class: "name-cell", text: st.name })]);
+      const blob = S.students.get(st.fileId);
+      // 이 주차 출석 요약 (수업일별 상태 — 미입력은 –)
+      const att = blob.weeks?.[week.id]?.attendance || {};
+      const attText = (week.sessions || []).length
+        ? week.sessions.map((d) => ATTENDANCE[att[d]]?.label || "–").join(" · ")
+        : "–";
+      const absent = (week.sessions || []).some((d) => att[d] === "A" || att[d] === "X");
+      const row = el("tr", {}, [
+        el("td", { class: "name-cell", text: st.name }),
+        el("td", { class: `hw-att${absent ? " abs" : ""}`, text: attText }),
+      ]);
       for (const item of week.homework) {
-        const blob = S.students.get(st.fileId);
         const btn = el("button", {
           class: "cell-toggle",
           onclick: () => {
@@ -1488,6 +1503,7 @@ function renderHomeworkTab(container) {
             const cur = stateOf(hw, item.id);
             if (cur === "none") hw[item.id] = true;
             else if (cur === "done") hw[item.id] = null; // 확인 전(결석)
+            else if (cur === "hold") hw[item.id] = false; // 해당 없음(수강 전 등)
             else delete hw[item.id];
             applyBtn(btn, stateOf(hw, item.id));
             markStudent(st.fileId);
@@ -1502,7 +1518,9 @@ function renderHomeworkTab(container) {
     card.appendChild(
       el("p", {
         class: "hint",
-        text: "칸을 누를 때마다 ✓ 완료 → ◌ 확인 전(결석 등, 완료율 제외) → 빈칸(미완료) 순으로 바뀝니다. ◌는 다음 수업에서 확인 후 바꿔 주세요.",
+        text:
+          "칸을 누를 때마다 ✓ 완료 → ◌ 확인 전(결석 등, 완료율 제외) → － 해당 없음(수강 전 등, 완료율 제외) → 빈칸(안 함) 순으로 바뀝니다. " +
+          "◌는 다음 수업에서 확인 후 바꿔 주시고, 중간에 들어와 그 숙제 대상이 아니었던 학생은 －로 두면 '안 함'과 구분됩니다. 출석 열은 이 주차 수업일별 출석입니다.",
       })
     );
   }

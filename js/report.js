@@ -2,7 +2,7 @@
 // 보고서는 브라우저 메모리에서만 만들어지고 인쇄(PDF 저장)로만 나간다.
 // 저장소에는 절대 커밋되지 않는다 (실명·점수 포함).
 import { el } from "./ui.js";
-import { sortWeeks, sortQuizzes, ATTENDANCE, ATTENDANCE_ORDER, toYMD, isNoShow } from "./store.js";
+import { sortWeeks, sortQuizzes, ATTENDANCE, ATTENDANCE_ORDER, toYMD, isNoShow, isNA } from "./store.js";
 
 // 입력:
 //   academyName, weeks(학원 blob), quizzes(학원 blob의 단원 퀴즈 목록),
@@ -141,16 +141,19 @@ export function buildDirectorReport({
       let doneAll = 0;
       let denomAll = 0;
       let holdAll = 0;
+      let naAll = 0;
       const holdNames = [];
       for (const s of students) {
         const hw = s.blob.weeks?.[P.id]?.homework || {};
         const done = items.filter((it) => hw[it.id] === true).length;
         const holds = items.filter((it) => isNoShow(hw, it.id)).length;
+        const nas = items.filter((it) => isNA(hw, it.id)).length;
         if (holds) {
           holdAll += holds;
           holdNames.push(s.name);
         }
-        const denom = items.length - holds;
+        naAll += nas;
+        const denom = items.length - holds - nas;
         doneAll += done;
         denomAll += denom;
         const rate = denom ? Math.round((done / denom) * 100) : null;
@@ -163,12 +166,14 @@ export function buildDirectorReport({
                   ? el("span", { class: "rd-check", text: "✓" })
                   : isNoShow(hw, it.id)
                     ? el("span", { class: "rd-hold", text: "◌" })
-                    : el("span", { class: "rd-dash", text: "–" }),
+                    : isNA(hw, it.id)
+                      ? el("span", { class: "rd-na", text: "－" })
+                      : el("span", { class: "rd-dash", text: "–" }),
               ])
             ),
             el("td", { class: "rd-rate" }, [
               rate == null
-                ? el("span", { class: "rd-hold", text: "확인 전" })
+                ? el("span", { class: "rd-hold", text: nas && !holds ? "해당 없음" : "확인 전" })
                 : el("span", { class: "rd-bar", "aria-hidden": "true" }, [
                     el("span", { class: "rd-bar-fill", style: `width:${rate}%` }),
                   ]),
@@ -184,7 +189,8 @@ export function buildDirectorReport({
           class: "rd-note",
           text:
             `전체 완료율 · ${totalRate}%` +
-            (holdAll ? ` (◌ 확인 전 ${holdAll}건은 결석 등으로 제외)` : ""),
+            (holdAll ? ` (◌ 확인 전 ${holdAll}건은 결석 등으로 제외)` : "") +
+            (naAll ? ` (－ 해당 없음 ${naAll}건은 수강 전 등으로 제외)` : ""),
         })
       );
       if (holdAll) {
