@@ -356,6 +356,10 @@ li.hw-done .hw-text {
 .att-chip.att-x .s {
   color: #52514e;
 }
+.att-chip.att-n .s {
+  color: var(--muted);
+  font-weight: 400;
+}
 .progress-text {
   white-space: pre-wrap;
   font-size: 15px;
@@ -447,6 +451,7 @@ button.cal-day.sel {
 .t-chip.att-m { background: var(--accent-wash); color: var(--accent-strong); border-color: #c8ddf5; }
 .t-chip.att-e { background: #e0f4f4; color: #0b6e6e; border-color: #bde3e3; }
 .t-chip.att-x { background: #efeeea; color: #52514e; border-color: #d8d6cf; }
+.t-chip.att-n { background: #faf9f5; color: #898781; border-color: #e1e0d9; }
 .t-dash {
   color: var(--muted);
 }

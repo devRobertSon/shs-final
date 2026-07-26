@@ -142,8 +142,9 @@ export const ATTENDANCE = {
   M: { label: "보강", cls: "att-m" },
   E: { label: "조퇴", cls: "att-e" },
   X: { label: "공결", cls: "att-x" },
+  N: { label: "수강 전", cls: "att-n" }, // 중간 합류 학생의 등록 전 수업일 — 결석·미입력과 구분
 };
-export const ATTENDANCE_ORDER = ["P", "L", "A", "M", "E", "X"];
+export const ATTENDANCE_ORDER = ["P", "L", "A", "M", "E", "X", "N"];
 
 // 결석 관련 상태는 값 null로 저장한다 (키 자체가 없으면 미입력/미완료):
 // - 퀴즈: student.quizzes[quizId] === null → 미응시 (평균·응시 인원에서 제외)

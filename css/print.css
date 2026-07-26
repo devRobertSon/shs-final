@@ -205,6 +205,7 @@
   .print-report .rd-chip.att-m { background: #eaf2fc; color: #1c5cab; border-color: #c8ddf5; }
   .print-report .rd-chip.att-e { background: #e0f4f4; color: #0b6e6e; border-color: #bde3e3; }
   .print-report .rd-chip.att-x { background: #efeeea; color: #52514e; border-color: #d8d6cf; }
+  .print-report .rd-chip.att-n { background: #faf9f5; color: #898781; border-color: #e1e0d9; }
   .print-report .rd-dash { color: #898781; }
   .print-report .rd-check { color: #006300; font-weight: 700; }
   .print-report .rd-hold { color: #a36b00; font-weight: 700; }

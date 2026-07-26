@@ -141,6 +141,10 @@ button.att-cell.att-x {
   background: #efeeea;
   color: #52514e;
 }
+button.att-cell.att-n {
+  background: var(--page);
+  color: #898781;
+}
 
 /* 출석 상태 선택기: 셀 안 인라인 3×2 그리드 */
 .att-chooser {
@@ -416,6 +420,7 @@ button.att-cell.att-x {
 .rd-chip.att-m { background: var(--accent-wash); color: var(--accent-strong); border-color: #c8ddf5; }
 .rd-chip.att-e { background: #e0f4f4; color: #0b6e6e; border-color: #bde3e3; }
 .rd-chip.att-x { background: #efeeea; color: #52514e; border-color: #d8d6cf; }
+.rd-chip.att-n { background: #faf9f5; color: #898781; border-color: #e1e0d9; }
 .rd-dash {
   color: var(--muted);
 }
