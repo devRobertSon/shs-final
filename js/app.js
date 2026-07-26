@@ -355,9 +355,12 @@ function renderQuiz(container) {
     return;
   }
 
-  // 요약: 두 타일 모두 '내가 응시한 퀴즈' 기준으로 통일 — 내 평균과 전체 평균이
-  // 같은 퀴즈 집합을 비교하므로, 목록의 응시한 행들로 검산해도 일치한다
-  const taken = quizzes.filter((q) => myScores[q.id] != null);
+  // 요약: 두 타일 모두 '내가 (정규) 응시한 퀴즈' 기준으로 통일 — 내 평균과 전체 평균이
+  // 같은 퀴즈 집합을 비교하므로, 목록의 응시한 행들로 검산해도 일치한다.
+  // 미수강 응시(quizzesNoClass)는 점수가 있어도 두 평균 모두에서 제외.
+  const noClass = student.quizzesNoClass || {};
+  const taken = quizzes.filter((q) => myScores[q.id] != null && !noClass[q.id]);
+  const ncCount = quizzes.filter((q) => myScores[q.id] != null && noClass[q.id]).length;
   if (taken.length) {
     const myAvg = round1(taken.reduce((a, q) => a + myScores[q.id], 0) / taken.length);
     const withStats = taken.filter((q) => q.stats?.avg != null);
@@ -365,7 +368,12 @@ function renderQuiz(container) {
       ? round1(withStats.reduce((a, q) => a + q.stats.avg, 0) / withStats.length)
       : null;
     card.appendChild(
-      el("p", { class: "hint", text: `지금까지 응시한 단원 퀴즈 ${taken.length}개 기준` })
+      el("p", {
+        class: "hint",
+        text:
+          `지금까지 응시한 단원 퀴즈 ${taken.length}개 기준` +
+          (ncCount ? ` (미수강 응시 ${ncCount}개는 평균에서 제외)` : ""),
+      })
     );
     card.appendChild(
       el("div", { class: "stat-row two" }, [
@@ -410,24 +418,31 @@ function renderQuiz(container) {
     ])
   );
   for (const q of [...quizzes].reverse()) {
+    const mine =
+      myScores[q.id] != null
+        ? el("td", { class: "num" }, [
+            `${myScores[q.id]} / ${q.max || 100}`,
+            noClass[q.id] ? el("span", { class: "nc-badge", text: "미수강" }) : null,
+          ])
+        : el("td", { class: "num", text: isNoShow(myScores, q.id) ? "미응시" : "–" });
     tbl.appendChild(
       el("tr", {}, [
         el("td", { class: "name-cell", text: unitShort(q.unit) }),
-        el("td", {
-          class: "num",
-          text:
-            myScores[q.id] != null
-              ? `${myScores[q.id]} / ${q.max || 100}`
-              : isNoShow(myScores, q.id)
-                ? "미응시"
-                : "–",
-        }),
+        mine,
         el("td", { class: "num", text: q.stats?.avg != null ? String(q.stats.avg) : "–" }),
         el("td", { text: quizDateText(q) }),
       ])
     );
   }
   card.appendChild(el("div", { class: "table-wrap" }, [tbl]));
+  if (ncCount) {
+    card.appendChild(
+      el("p", {
+        class: "hint",
+        text: "미수강 = 수업을 듣지 않은 상태에서 응시한 퀴즈입니다. 점수는 기록되지만 내 평균과 전체 평균 계산에는 들어가지 않습니다.",
+      })
+    );
+  }
   container.appendChild(card);
 }
 
@@ -1032,7 +1047,11 @@ function renderTeacherScores(container, weeks, state, rerender) {
         el("td", { class: "name-cell", text: r.name }),
         ...quizzes.map((q) => {
           const v = r.byQuiz?.[q.id];
-          if (v != null) return el("td", { class: "num", text: String(v) });
+          if (v != null)
+            return el("td", { class: "num" }, [
+              String(v),
+              r.noClass?.[q.id] ? el("span", { class: "nc-badge", text: "미수강" }) : null,
+            ]);
           return el("td", { class: "num" }, [
             isNoShow(r.byQuiz, q.id)
               ? el("span", { class: "t-noshow", text: "미응시" })
@@ -1042,10 +1061,10 @@ function renderTeacherScores(container, weeks, state, rerender) {
       ])
     );
   }
-  // 학원 평균 행
+  // 학원 평균 행 (미수강 응시 점수는 제외)
   const avgRow = el("tr", { class: "t-avg-row" }, [el("td", { class: "name-cell", text: "학원 평균" })]);
   for (const q of quizzes) {
-    const vals = rows.map((r) => r.byQuiz?.[q.id]).filter((v) => v != null);
+    const vals = rows.map((r) => (r.noClass?.[q.id] ? null : r.byQuiz?.[q.id])).filter((v) => v != null);
     avgRow.appendChild(
       el("td", {
         class: "num",
@@ -1057,13 +1076,18 @@ function renderTeacherScores(container, weeks, state, rerender) {
   }
   tbl.appendChild(avgRow);
   scoreCard.appendChild(el("div", { class: "table-wrap" }, [tbl]));
+  if (rows.some((r) => quizzes.some((q) => r.byQuiz?.[q.id] != null && r.noClass?.[q.id]))) {
+    scoreCard.appendChild(
+      el("p", { class: "hint", text: "미수강 = 수업을 듣지 않은 상태에서 응시 — 학원 평균·분포·전체 평균에서 제외됩니다." })
+    );
+  }
   container.appendChild(scoreCard);
 }
 
-// 스냅샷에서 특정 퀴즈의 점수 배열 (분포용)
+// 스냅샷에서 특정 퀴즈의 점수 배열 (분포용) — 미수강 응시 점수는 제외
 function quizScoreValues(quizId) {
   return (session.teacher.snapshot?.scores || [])
-    .map((r) => r.byQuiz?.[quizId])
+    .map((r) => (r.noClass?.[quizId] ? null : r.byQuiz?.[quizId]))
     .filter((v) => v != null);
 }
 

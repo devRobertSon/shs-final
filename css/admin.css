@@ -85,6 +85,17 @@ button.noshow-toggle.on {
   color: #52514e;
   font-weight: 700;
 }
+button.noclass-toggle.on {
+  background: #fdf3e2;
+  border-color: #d9b26a;
+  color: #a36b00;
+  font-weight: 700;
+}
+.rd-nc {
+  color: #a36b00;
+  font-weight: 700;
+  margin-left: 2px;
+}
 .visit-stats {
   white-space: pre-line;
   font-size: 14px;

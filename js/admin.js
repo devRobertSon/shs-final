@@ -1125,10 +1125,13 @@ function renderScoresTab(container) {
   });
   const warn = el("p", { class: "error-text" });
 
-  // 점수 입력 표 (빈칸 = 미입력, [미응시] = 결석 등으로 응시 안 함 → 평균 제외)
+  // 점수 입력 표 (빈칸 = 미입력, [미응시] = 응시 안 함 → 평균 제외,
+  //              [미수강] = 수업을 안 듣고 응시 → 점수는 기록하되 평균 제외)
   const inputs = new Map(); // fileId -> input
   const noShow = new Map(); // fileId -> boolean
   const noShowBtns = new Map(); // fileId -> button
+  const noClass = new Map(); // fileId -> boolean
+  const noClassBtns = new Map(); // fileId -> button
   const avgLine = el("p", { class: "hint" });
   const tbl = el("table", { class: "grid" });
   tbl.appendChild(
@@ -1136,19 +1139,30 @@ function renderScoresTab(container) {
       el("th", { class: "name-cell", text: "이름" }),
       el("th", { text: "점수" }),
       el("th", { text: "미응시" }),
+      el("th", { text: "미수강" }),
     ])
   );
+  const setNoClass = (fileId, on) => {
+    noClass.set(fileId, on);
+    noClassBtns.get(fileId).classList.toggle("on", on);
+    noClassBtns.get(fileId).setAttribute("aria-pressed", on ? "true" : "false");
+  };
   const setNoShow = (fileId, on) => {
     noShow.set(fileId, on);
     const input = inputs.get(fileId);
     input.disabled = on;
-    if (on) input.value = "";
+    if (on) {
+      input.value = "";
+      setNoClass(fileId, false); // 응시를 안 했으면 미수강 표시는 의미 없음
+    }
     noShowBtns.get(fileId).classList.toggle("on", on);
   };
   for (const st of students) {
-    const q = S.students.get(st.fileId)?.quizzes;
+    const sBlob = S.students.get(st.fileId);
+    const q = sBlob?.quizzes;
     const cur = q?.[quiz.id];
     const ns = isNoShow(q, quiz.id);
+    const nc = !!sBlob?.quizzesNoClass?.[quiz.id];
     const input = el("input", {
       type: "number",
       class: "cell-input",
@@ -1159,6 +1173,7 @@ function renderScoresTab(container) {
     if (ns) input.disabled = true;
     inputs.set(st.fileId, input);
     noShow.set(st.fileId, ns);
+    noClass.set(st.fileId, nc);
     const btn = el("button", {
       class: `btn btn-small noshow-toggle${ns ? " on" : ""}`,
       text: "미응시",
@@ -1169,22 +1184,40 @@ function renderScoresTab(container) {
       },
     });
     noShowBtns.set(st.fileId, btn);
+    const ncBtn = el("button", {
+      class: `btn btn-small noclass-toggle${nc ? " on" : ""}`,
+      text: "미수강",
+      "aria-pressed": nc ? "true" : "false",
+      onclick: () => {
+        const next = !noClass.get(st.fileId);
+        if (next) setNoShow(st.fileId, false); // 점수를 기록하는 상태이므로 미응시 해제
+        setNoClass(st.fileId, next);
+        updateAvg();
+      },
+    });
+    noClassBtns.set(st.fileId, ncBtn);
     tbl.appendChild(
       el("tr", {}, [
         el("td", { class: "name-cell", text: st.name }),
         el("td", {}, [input]),
         el("td", {}, [btn]),
+        el("td", {}, [ncBtn]),
       ])
     );
   }
 
   function updateAvg() {
     const vals = students
-      .filter((st) => !noShow.get(st.fileId))
+      .filter((st) => !noShow.get(st.fileId) && !noClass.get(st.fileId))
       .map((st) => parseFloat(inputs.get(st.fileId).value))
       .filter((v) => !isNaN(v));
     const nsCount = students.filter((st) => noShow.get(st.fileId)).length;
-    const nsText = nsCount ? ` · 미응시 ${nsCount}명 (평균 제외)` : "";
+    const ncCount = students.filter(
+      (st) => noClass.get(st.fileId) && !isNaN(parseFloat(inputs.get(st.fileId).value))
+    ).length;
+    const nsText =
+      (nsCount ? ` · 미응시 ${nsCount}명 (평균 제외)` : "") +
+      (ncCount ? ` · 미수강 ${ncCount}명 (평균 제외)` : "");
     avgLine.textContent = vals.length
       ? `응시 ${vals.length}명 · 평균 ${(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)}점${nsText}`
       : `입력된 점수가 없습니다.${nsText}`;
@@ -1235,6 +1268,12 @@ function renderScoresTab(container) {
 
   card.appendChild(el("label", { class: "field" }, [el("span", { text: "엑셀에서 붙여넣기 (이름 ⇥ 점수)" }), tsv]));
   card.appendChild(warn);
+  card.appendChild(
+    el("p", {
+      class: "hint",
+      text: "[미수강] = 수업을 듣지 않은 상태에서 응시한 퀴즈 — 점수는 기록되지만 학원·전체 평균과 분포에서 제외되고, 학생·학부모 화면에 '미수강'으로 표시됩니다.",
+    })
+  );
   card.appendChild(el("div", { class: "toolbar" }, [avgLine]));
   card.appendChild(el("div", { class: "table-wrap" }, [tbl]));
   card.appendChild(
@@ -1269,6 +1308,18 @@ function renderScoresTab(container) {
               changed++;
             }
           }
+          // 미수강 플래그 — 점수가 있을 때만 유지 (미응시·빈칸이면 자동 해제)
+          const wantFlag = !noShow.get(st.fileId) && raw !== "" && !!noClass.get(st.fileId);
+          const flags = blob.quizzesNoClass || {};
+          if (wantFlag !== !!flags[quiz.id]) {
+            if (wantFlag) (blob.quizzesNoClass = flags)[quiz.id] = true;
+            else {
+              delete flags[quiz.id];
+              if (!Object.keys(flags).length) delete blob.quizzesNoClass;
+            }
+            markStudent(st.fileId);
+            changed++;
+          }
         }
         recomputeStats();
         toast(`저장되었습니다 (${changed}명 변경). '발행'해야 사이트에 반영됩니다.`, "ok");
@@ -1291,8 +1342,10 @@ function recomputeStats() {
       const key = norm(q.unit);
       const arr = pool.get(key) || [];
       for (const st of activeStudentsOf(a.fileId)) {
-        const v = S.students.get(st.fileId)?.quizzes?.[q.id];
-        if (v != null) arr.push(v);
+        const sBlob = S.students.get(st.fileId);
+        const v = sBlob?.quizzes?.[q.id];
+        // 미수강 응시(quizzesNoClass)는 점수가 있어도 전체 평균에서 제외
+        if (v != null && !sBlob?.quizzesNoClass?.[q.id]) arr.push(v);
       }
       pool.set(key, arr);
     }
@@ -2398,6 +2451,7 @@ function buildTeacherSnapshot(academyFileId) {
   const scores = students.map((st) => ({
     name: st.name,
     byQuiz: { ...(S.students.get(st.fileId)?.quizzes || {}) },
+    noClass: { ...(S.students.get(st.fileId)?.quizzesNoClass || {}) },
   }));
   // 숙제 체크 상태 (주차별 학생×항목)
   const homework = {};
