@@ -66,7 +66,7 @@ const ACADEMIES = [
     quizzes: [
       { id: "qb1", unit: "물리: 자유낙하", weekId: "2026-W25", max: 100, scores: [70, 95, 84, 88, null] },
       { id: "qb2", unit: "화학: 몰 개념", weekId: "2026-W26", max: 100, scores: [75, 92, 80, 91, 85] },
-      { id: "qb3", unit: "화학: 화학 결합", weekId: "2026-W27", max: 100, scores: [81, 96, 85, 94, 89] },
+      { id: "qb3", unit: "화학: 화학 결합", weekId: "2026-W27", max: 100, scores: [81, 96, 85, 94, 89], noClass: [0] },
     ],
     reportsFor: { pdfAndNote: "qb3", noteOnly: "qb2" },
   },
@@ -127,7 +127,10 @@ async function main() {
     for (const q of A.quizzes) {
       const key = q.unit.trim().replace(/\s+/g, " ");
       const arr = unitPool.get(key) || [];
-      arr.push(...q.scores.filter((s) => s != null));
+      // noClass 인덱스 = 미수강 응시 → 점수는 있어도 전체 평균에서 제외 (admin recomputeStats와 동일)
+      q.scores.forEach((s, i) => {
+        if (s != null && !(q.noClass || []).includes(i)) arr.push(s);
+      });
       unitPool.set(key, arr);
     }
   }
@@ -238,8 +241,10 @@ async function main() {
 
       // 단원 퀴즈 점수 (scores 배열의 null = 미응시 → null 그대로 저장, 평균 제외)
       const quizScores = {};
+      const quizNC = {};
       for (const q of A.quizzes) {
         if (q.scores[si] !== undefined) quizScores[q.id] = q.scores[si];
+        if ((q.noClass || []).includes(si) && q.scores[si] != null) quizNC[q.id] = true;
       }
 
       // 단원 리포트: pdfAndNote 퀴즈 = 분석 PDF + 전달사항 / noteOnly 퀴즈 = 전달사항만
@@ -275,13 +280,14 @@ async function main() {
         academy: { fileId: aEntry.fileId, key: aEntry.key, name: aEntry.name },
         weeks: weeksData,
         quizzes: quizScores,
+        ...(Object.keys(quizNC).length ? { quizzesNoClass: quizNC } : {}),
         quizReports,
       };
       await writeFile(
         path.join(root, `data/s/${fileId}.json`),
         JSON.stringify(await encryptJSON(aesKey, studentBlob), null, 1)
       );
-      academyStudents.push({ name, weeksData, quizScores, quizReports });
+      academyStudents.push({ name, weeksData, quizScores, quizNC, quizReports });
     }
 
     // 선생님 열람 코드 + 스냅샷 (admin buildTeacherSnapshot과 동일 규칙)
@@ -307,6 +313,7 @@ async function main() {
       const scores = academyStudents.map((s) => ({
         name: s.name,
         byQuiz: { ...s.quizScores },
+        noClass: { ...s.quizNC },
       }));
       const homework = {};
       for (const w of A.weeks) {
@@ -394,6 +401,7 @@ ${teacherLines.join("\n")}
 
 - 박서연(한빛) — 「화학: 몰 개념」 **미응시**(결석, 평균 제외) + W26 숙제 1번 **확인 전(◌)**
 - 한시우(미래) — 「물리: 자유낙하」 **미응시**
+- 강민준(미래) — 「화학: 화학 결합」 **미수강 응시**(81점 — 점수 기록·평균 제외)
 
 > 이 파일은 \`node dev/make-sample.mjs\` 실행 시마다 새로 생성됩니다.
 `;

@@ -262,6 +262,21 @@ li.hw-done .hw-text {
   margin-top: 6px;
 }
 
+/* 미수강 응시 배지 (학생 퀴즈 목록 · 선생님 성적표) */
+.nc-badge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: #a36b00;
+  border: 1px solid #d9b26a;
+  border-radius: 999px;
+  padding: 0 6px;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+
 /* ---------- 자료실 ---------- */
 .material {
   display: flex;

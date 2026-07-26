@@ -207,10 +207,16 @@ export function buildDirectorReport({
       warn(`지난 주(${P.label})에 등록된 단원 퀴즈가 없습니다.`);
       quizChildren.push(el("p", { class: "rd-empty", text: "(지난 주 퀴즈 없음)" }));
     } else {
-      // 퀴즈별 통계 (미응시 = null 저장 → 평균 제외·경고 아님 / 키 없음 = 미입력 → 경고)
+      // 퀴즈별 통계 (미응시 = null 저장 → 평균 제외·경고 아님 / 키 없음 = 미입력 → 경고 /
+      //             미수강(quizzesNoClass) = 점수는 있지만 평균 제외)
       const perQuiz = quizzesP.map((q) => {
-        const scores = students.map((s) => s.blob.quizzes?.[q.id]).filter((v) => v != null);
+        const scores = students
+          .map((s) => (s.blob.quizzesNoClass?.[q.id] ? null : s.blob.quizzes?.[q.id]))
+          .filter((v) => v != null);
         const noshow = students.filter((s) => isNoShow(s.blob.quizzes, q.id)).map((s) => s.name);
+        const noclass = students
+          .filter((s) => s.blob.quizzes?.[q.id] != null && s.blob.quizzesNoClass?.[q.id])
+          .map((s) => s.name);
         const missing = students
           .filter((s) => s.blob.quizzes?.[q.id] == null && !isNoShow(s.blob.quizzes, q.id))
           .map((s) => s.name);
@@ -218,6 +224,7 @@ export function buildDirectorReport({
           q,
           scores,
           noshow,
+          noclass,
           missing,
           avg: scores.length ? round1(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
           hi: scores.length ? Math.max(...scores) : null,
@@ -228,6 +235,7 @@ export function buildDirectorReport({
         if (!pq.scores.length) warn(`「${pq.q.unit}」 퀴즈 점수가 하나도 입력되지 않았습니다.`);
         else if (pq.missing.length) warn(`「${pq.q.unit}」 점수 미입력: ${pq.missing.join(", ")}`);
         if (pq.noshow.length) info(`「${pq.q.unit}」 미응시(결석 등): ${pq.noshow.join(", ")} — 평균에서 제외됩니다.`);
+        if (pq.noclass.length) info(`「${pq.q.unit}」 미수강 응시: ${pq.noclass.join(", ")} — 점수는 기록되지만 평균에서 제외됩니다.`);
       }
 
       // 단일 퀴즈면 통계 타일(학원 vs 전체), 복수면 퀴즈별 요약 줄
@@ -263,7 +271,11 @@ export function buildDirectorReport({
             el("td", { class: "rd-name", text: s.name }),
             ...quizzesP.map((q) => {
               const v = s.blob.quizzes?.[q.id];
-              if (v != null) return el("td", { class: "rd-score", text: String(v) });
+              if (v != null)
+                return el("td", { class: "rd-score" }, [
+                  String(v),
+                  s.blob.quizzesNoClass?.[q.id] ? el("span", { class: "rd-nc", text: "※" }) : null,
+                ]);
               return el("td", { class: "rd-score" }, [
                 isNoShow(s.blob.quizzes, q.id)
                   ? el("span", { class: "rd-noshow", text: "미응시" })
@@ -274,6 +286,11 @@ export function buildDirectorReport({
         );
       }
       quizChildren.push(el("div", { class: "rd-table-wrap" }, [tbl]));
+      if (perQuiz.some((pq) => pq.noclass.length)) {
+        quizChildren.push(
+          el("p", { class: "rd-note", text: "※ 미수강 응시 (수업을 듣지 않고 본 퀴즈) — 평균·통계에서 제외" })
+        );
+      }
 
       if (perQuiz.length > 1) {
         for (const pq of perQuiz.filter((x) => x.scores.length)) {
@@ -392,7 +409,9 @@ function statTile(label, value, sub) {
 // 퀴즈의 "학원 평균" — 이 학원 학생 점수로 직접 계산.
 // (quiz.stats는 두 학원 합산 전체 평균이므로 여기서 쓰지 않는다)
 function quizAvg(quiz, students) {
-  const scores = students.map((s) => s.blob.quizzes?.[quiz.id]).filter((v) => v != null);
+  const scores = students
+    .map((s) => (s.blob.quizzesNoClass?.[quiz.id] ? null : s.blob.quizzes?.[quiz.id]))
+    .filter((v) => v != null);
   if (!scores.length) return null;
   return round1(scores.reduce((a, b) => a + b, 0) / scores.length);
 }
