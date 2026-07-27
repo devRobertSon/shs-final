@@ -170,6 +170,18 @@ export function visitPingURL(kind, loc = location) {
   return `https://github.com/${m[1]}/${repo}/releases/download/visit-counter/visit-${kind}.bin`;
 }
 
+// 2배 출제 퀴즈(quiz.half): 문제를 2배로 내서 만점이 2배(예: 14점 단원을 28점)로 된 경우.
+// 점수는 원점수(28점 만점)로 저장·입력하고, 학생·선생님·보고서 화면의 점수/평균/만점은
+// 절반으로 환산해 다른 단원(14점 기준)과 눈높이를 맞춘다.
+export function dispScore(quiz, v) {
+  if (v == null) return v;
+  return quiz?.half ? Math.round((v / 2) * 10) / 10 : v;
+}
+export function dispMax(quiz) {
+  const m = quiz?.max || 100;
+  return quiz?.half ? m / 2 : m;
+}
+
 // 카톡 공유용 숙제 목록 텍스트 (관리자/학생 공용)
 export function homeworkShareText(academyName, week) {
   const lines = [`📌 [${academyName}] ${week.label} 숙제`];
