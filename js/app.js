@@ -11,6 +11,8 @@ import {
   ATTENDANCE,
   isNoShow,
   isNA,
+  dispScore,
+  dispMax,
   toYMD,
   visitPingURL,
 } from "./store.js";
@@ -374,10 +376,11 @@ function renderQuiz(container) {
   const taken = quizzes.filter((q) => myScores[q.id] != null && !noClass[q.id]);
   const ncCount = quizzes.filter((q) => myScores[q.id] != null && noClass[q.id]).length;
   if (taken.length) {
-    const myAvg = round1(taken.reduce((a, q) => a + myScores[q.id], 0) / taken.length);
+    // 2배 출제 퀴즈(half)는 점수·평균을 절반으로 환산해 다른 단원과 같은 기준으로 계산
+    const myAvg = round1(taken.reduce((a, q) => a + dispScore(q, myScores[q.id]), 0) / taken.length);
     const withStats = taken.filter((q) => q.stats?.avg != null);
     const allAvg = withStats.length
-      ? round1(withStats.reduce((a, q) => a + q.stats.avg, 0) / withStats.length)
+      ? round1(withStats.reduce((a, q) => a + dispScore(q, q.stats.avg), 0) / withStats.length)
       : null;
     card.appendChild(
       el("p", {
@@ -401,9 +404,9 @@ function renderQuiz(container) {
   card.appendChild(chartBox);
   renderScoreChart(chartBox, {
     weeks: quizzes.map((q) => ({ id: q.id, label: unitShort(q.unit) })),
-    mine: quizzes.map((q) => (myScores[q.id] != null ? myScores[q.id] : null)),
-    avg: quizzes.map((q) => (q.stats?.avg != null ? q.stats.avg : null)),
-    yMax: Math.max(...quizzes.map((q) => q.max || 100)),
+    mine: quizzes.map((q) => (myScores[q.id] != null ? dispScore(q, myScores[q.id]) : null)),
+    avg: quizzes.map((q) => (q.stats?.avg != null ? dispScore(q, q.stats.avg) : null)),
+    yMax: Math.max(...quizzes.map((q) => dispMax(q))),
   });
 
   // 주차 대신 날짜: 라벨의 괄호 안 날짜 → 수업일 범위 → 라벨 순으로 사용
@@ -433,7 +436,7 @@ function renderQuiz(container) {
     const mine =
       myScores[q.id] != null
         ? el("td", { class: "num" }, [
-            `${myScores[q.id]} / ${q.max || 100}`,
+            `${dispScore(q, myScores[q.id])} / ${dispMax(q)}`,
             noClass[q.id] ? el("span", { class: "nc-badge", text: "미수강" }) : null,
           ])
         : el("td", { class: "num", text: isNoShow(myScores, q.id) ? "미응시" : "–" });
@@ -441,12 +444,17 @@ function renderQuiz(container) {
       el("tr", {}, [
         el("td", { class: "name-cell", text: unitShort(q.unit) }),
         mine,
-        el("td", { class: "num", text: q.stats?.avg != null ? String(q.stats.avg) : "–" }),
+        el("td", { class: "num", text: q.stats?.avg != null ? String(dispScore(q, q.stats.avg)) : "–" }),
         el("td", { text: quizDateText(q) }),
       ])
     );
   }
   card.appendChild(el("div", { class: "table-wrap" }, [tbl]));
+  if (quizzes.some((q) => q.half)) {
+    card.appendChild(
+      el("p", { class: "hint", text: "문제를 2배로 낸 퀴즈(만점 2배)는 점수·평균을 절반으로 환산해 다른 단원과 같은 기준으로 표시합니다." })
+    );
+  }
   if (ncCount) {
     card.appendChild(
       el("p", {
@@ -1060,7 +1068,7 @@ function renderTeacherScores(container, weeks, state, rerender) {
   tbl.appendChild(
     el("tr", {}, [
       el("th", { class: "name-cell", text: "이름" }),
-      ...quizzes.map((q) => el("th", { text: `${q.unit} (${q.max || 100})` })),
+      ...quizzes.map((q) => el("th", { text: `${q.unit} (${dispMax(q)})` })),
     ])
   );
   for (const r of rows) {
@@ -1071,7 +1079,7 @@ function renderTeacherScores(container, weeks, state, rerender) {
           const v = r.byQuiz?.[q.id];
           if (v != null)
             return el("td", { class: "num" }, [
-              String(v),
+              String(dispScore(q, v)),
               r.noClass?.[q.id] ? el("span", { class: "nc-badge", text: "미수강" }) : null,
             ]);
           return el("td", { class: "num" }, [
@@ -1083,10 +1091,10 @@ function renderTeacherScores(container, weeks, state, rerender) {
       ])
     );
   }
-  // 학원 평균 행 (미수강 응시 점수는 제외)
+  // 학원 평균 행 (미수강 응시 점수는 제외, 2배 출제는 절반 환산)
   const avgRow = el("tr", { class: "t-avg-row" }, [el("td", { class: "name-cell", text: "학원 평균" })]);
   for (const q of quizzes) {
-    const vals = rows.map((r) => (r.noClass?.[q.id] ? null : r.byQuiz?.[q.id])).filter((v) => v != null);
+    const vals = rows.map((r) => (r.noClass?.[q.id] ? null : dispScore(q, r.byQuiz?.[q.id]))).filter((v) => v != null);
     avgRow.appendChild(
       el("td", {
         class: "num",
@@ -1103,13 +1111,18 @@ function renderTeacherScores(container, weeks, state, rerender) {
       el("p", { class: "hint", text: "미수강 = 수업을 듣지 않은 상태에서 응시 — 학원 평균·분포·전체 평균에서 제외됩니다." })
     );
   }
+  if (quizzes.some((q) => q.half)) {
+    scoreCard.appendChild(
+      el("p", { class: "hint", text: "2배 출제 퀴즈는 점수·평균·분포를 절반으로 환산해 표시합니다." })
+    );
+  }
   container.appendChild(scoreCard);
 }
 
-// 스냅샷에서 특정 퀴즈의 점수 배열 (분포용) — 미수강 응시 점수는 제외
-function quizScoreValues(quizId) {
+// 스냅샷에서 특정 퀴즈의 점수 배열 (분포용) — 미수강 응시 제외, 2배 출제는 절반 환산
+function quizScoreValues(q) {
   return (session.teacher.snapshot?.scores || [])
-    .map((r) => (r.noClass?.[quizId] ? null : r.byQuiz?.[quizId]))
+    .map((r) => (r.noClass?.[q.id] ? null : dispScore(q, r.byQuiz?.[q.id])))
     .filter((v) => v != null);
 }
 
@@ -1117,7 +1130,7 @@ function quizScoreValues(quizId) {
 function renderQuizDistCards(container, quizzes) {
   const { academy } = session;
   for (const q of quizzes) {
-    const scores = quizScoreValues(q.id);
+    const scores = quizScoreValues(q);
     const card = el("div", { class: "card" }, [
       el("div", { class: "unit-title" }, [
         el("span", { text: q.unit }),
@@ -1130,13 +1143,13 @@ function renderQuizDistCards(container, quizzes) {
         el("p", {
           class: "hint",
           text:
-            `학원 평균 ${avg}점 · 최고 ${Math.max(...scores)}점 · 최저 ${Math.min(...scores)}점 · 응시 ${scores.length}명 (만점 ${q.max || 100}점)` +
-            (q.stats?.avg != null ? ` · 전체 평균 ${q.stats.avg}점` : ""),
+            `학원 평균 ${avg}점 · 최고 ${Math.max(...scores)}점 · 최저 ${Math.min(...scores)}점 · 응시 ${scores.length}명 (만점 ${dispMax(q)}점)` +
+            (q.stats?.avg != null ? ` · 전체 평균 ${dispScore(q, q.stats.avg)}점` : ""),
         })
       );
       const histBox = el("div");
       card.appendChild(histBox);
-      renderHistogram(histBox, { scores, max: q.max || 100 });
+      renderHistogram(histBox, { scores, max: dispMax(q) });
     } else {
       card.appendChild(el("p", { class: "empty", text: "입력된 점수가 없습니다." }));
     }

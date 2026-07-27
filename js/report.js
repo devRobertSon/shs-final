@@ -2,7 +2,7 @@
 // 보고서는 브라우저 메모리에서만 만들어지고 인쇄(PDF 저장)로만 나간다.
 // 저장소에는 절대 커밋되지 않는다 (실명·점수 포함).
 import { el } from "./ui.js";
-import { sortWeeks, sortQuizzes, ATTENDANCE, ATTENDANCE_ORDER, toYMD, isNoShow, isNA } from "./store.js";
+import { sortWeeks, sortQuizzes, ATTENDANCE, ATTENDANCE_ORDER, toYMD, isNoShow, isNA, dispScore, dispMax } from "./store.js";
 
 // 입력:
 //   academyName, weeks(학원 blob), quizzes(학원 blob의 단원 퀴즈 목록),
@@ -216,8 +216,9 @@ export function buildDirectorReport({
       // 퀴즈별 통계 (미응시 = null 저장 → 평균 제외·경고 아님 / 키 없음 = 미입력 → 경고 /
       //             미수강(quizzesNoClass) = 점수는 있지만 평균 제외)
       const perQuiz = quizzesP.map((q) => {
+        // 미수강 제외 + 2배 출제(half)는 절반 환산한 표시 점수 기준으로 통계
         const scores = students
-          .map((s) => (s.blob.quizzesNoClass?.[q.id] ? null : s.blob.quizzes?.[q.id]))
+          .map((s) => (s.blob.quizzesNoClass?.[q.id] ? null : dispScore(q, s.blob.quizzes?.[q.id])))
           .filter((v) => v != null);
         const noshow = students.filter((s) => isNoShow(s.blob.quizzes, q.id)).map((s) => s.name);
         const noclass = students
@@ -251,9 +252,9 @@ export function buildDirectorReport({
         quizChildren.push(
           el("div", { class: "rd-stats" }, [
             statTile("학원 평균", `${pq.avg}점`, `응시 ${pq.scores.length}명`),
-            statTile("전체 평균", g?.avg != null ? `${g.avg}점` : "–", g ? `합산 ${g.count}명` : ""),
+            statTile("전체 평균", g?.avg != null ? `${dispScore(pq.q, g.avg)}점` : "–", g ? `합산 ${g.count}명` : ""),
             statTile("최고", `${pq.hi}점`),
-            statTile("최저", `${pq.lo}점`, `만점 ${pq.q.max || 100}점`),
+            statTile("최저", `${pq.lo}점`, `만점 ${dispMax(pq.q)}점`),
           ])
         );
         if (pq.noshow.length) {
@@ -268,7 +269,7 @@ export function buildDirectorReport({
       tbl.appendChild(
         el("tr", {}, [
           el("th", { text: "이름" }),
-          ...quizzesP.map((q) => el("th", { text: `${q.unit} (${q.max || 100}점)` })),
+          ...quizzesP.map((q) => el("th", { text: `${q.unit} (${dispMax(q)}점)` })),
         ])
       );
       for (const s of students) {
@@ -279,7 +280,7 @@ export function buildDirectorReport({
               const v = s.blob.quizzes?.[q.id];
               if (v != null)
                 return el("td", { class: "rd-score" }, [
-                  String(v),
+                  String(dispScore(q, v)),
                   s.blob.quizzesNoClass?.[q.id] ? el("span", { class: "rd-nc", text: "※" }) : null,
                 ]);
               return el("td", { class: "rd-score" }, [
@@ -306,8 +307,8 @@ export function buildDirectorReport({
               class: "rd-note",
               text:
                 `「${pq.q.unit}」 응시 ${pq.scores.length}명 · 학원 평균 ${pq.avg}점` +
-                (g?.avg != null ? ` · 전체 평균 ${g.avg}점(합산 ${g.count}명)` : "") +
-                ` · 최고 ${pq.hi}점 · 최저 ${pq.lo}점 (만점 ${pq.q.max || 100}점)` +
+                (g?.avg != null ? ` · 전체 평균 ${dispScore(pq.q, g.avg)}점(합산 ${g.count}명)` : "") +
+                ` · 최고 ${pq.hi}점 · 최저 ${pq.lo}점 (만점 ${dispMax(pq.q)}점)` +
                 (pq.noshow.length ? ` · 미응시 ${pq.noshow.length}명` : ""),
             })
           );
@@ -356,7 +357,7 @@ export function buildDirectorReport({
 
     if (trendData.length >= 2) {
       quizChildren.push(el("h3", { class: "rd-h3", text: "단원별 학원 평균 추이" }));
-      quizChildren.push(renderTrend(trendData, Math.max(100, ...allQuizzes.map((q) => q.max || 0))));
+      quizChildren.push(renderTrend(trendData, Math.max(100, ...allQuizzes.map((q) => dispMax(q)))));
     }
     doc.appendChild(section(`지난 주 단원 퀴즈 결과 — ${P.label}`, quizChildren));
   }
@@ -416,7 +417,7 @@ function statTile(label, value, sub) {
 // (quiz.stats는 두 학원 합산 전체 평균이므로 여기서 쓰지 않는다)
 function quizAvg(quiz, students) {
   const scores = students
-    .map((s) => (s.blob.quizzesNoClass?.[quiz.id] ? null : s.blob.quizzes?.[quiz.id]))
+    .map((s) => (s.blob.quizzesNoClass?.[quiz.id] ? null : dispScore(quiz, s.blob.quizzes?.[quiz.id])))
     .filter((v) => v != null);
   if (!scores.length) return null;
   return round1(scores.reduce((a, b) => a + b, 0) / scores.length);

@@ -429,7 +429,7 @@ function quizToolbar(container) {
 // 주차가 정해진 경우, 대상 학원에 같은 주차(id)가 없으면 주차도 함께 만든다 (수업일은 비워 둠).
 // 같은 단원명이 이미 있으면 건너뛴다 — 전체 평균이 단원명 기준으로 합산되므로 중복 금지.
 // 반환: { made: [학원명], weekMade: [학원명] }
-function copyQuizToOtherAcademies(unit, weekId, max) {
+function copyQuizToOtherAcademies(unit, weekId, max, half) {
   const norm = (s) => String(s || "").trim().replace(/\s+/g, " ");
   const srcWeek = weekId ? (academyBlob().weeks || []).find((w) => w.id === weekId) : null;
   const made = [];
@@ -447,7 +447,7 @@ function copyQuizToOtherAcademies(unit, weekId, max) {
     }
     ab.quizzes = ab.quizzes || [];
     if (ab.quizzes.some((x) => norm(x.unit) === norm(unit))) continue;
-    ab.quizzes.push({ id: randomHexId(6), unit, weekId: weekId || null, max, stats: null });
+    ab.quizzes.push({ id: randomHexId(6), unit, weekId: weekId || null, max, ...(half ? { half: true } : {}), stats: null });
     markAcademy(a.fileId);
     made.push(a.name);
   }
@@ -480,6 +480,11 @@ function editQuiz(quiz) {
     weekSel.appendChild(el("option", { value: w.id, text: w.label, selected: w.id === defaultWeek }));
   }
   const maxIn = el("input", { type: "number", value: String(quiz?.max || 100), min: "1" });
+  const halfChk = el("input", { type: "checkbox", checked: !!quiz?.half });
+  // 새 퀴즈에서 만점을 평소의 2배(28점)로 입력하면 절반 환산을 자동 제안
+  maxIn.addEventListener("input", () => {
+    if (!quiz && parseFloat(maxIn.value) === 28) halfChk.checked = true;
+  });
   const allChk = el("input", { type: "checkbox", checked: true });
   const err = el("p", { class: "error-text" });
   const overlay = el("div", { class: "modal-overlay" });
@@ -493,6 +498,10 @@ function editQuiz(quiz) {
       el("label", { class: "field" }, [el("span", { text: "단원명" }), unitIn]),
       el("label", { class: "field" }, [el("span", { text: "응시 주차" }), weekSel]),
       el("label", { class: "field" }, [el("span", { text: "만점" }), maxIn]),
+      el("label", { class: "check" }, [
+        halfChk,
+        "2배 출제 — 점수·평균을 절반으로 환산해 표시 (예: 만점 28점 퀴즈를 14점 기준으로)",
+      ]),
       !quiz && multiAcademy
         ? el("label", { class: "check" }, [allChk, "다른 학원에도 함께 만들기 (같은 단원·주차·만점)"])
         : null,
@@ -503,7 +512,7 @@ function editQuiz(quiz) {
             onclick: () => {
               const unit = unitIn.value.trim();
               if (!unit) return (err.textContent = "단원명을 입력해 주세요.");
-              const result = copyQuizToOtherAcademies(unit, weekSel.value || null, parseFloat(maxIn.value) || 100);
+              const result = copyQuizToOtherAcademies(unit, weekSel.value || null, parseFloat(maxIn.value) || 100, halfChk.checked);
               copyResultToast(unit, result);
               overlay.remove();
               renderTab();
@@ -540,20 +549,22 @@ function editQuiz(quiz) {
             const weekId = weekSel.value || null; // "" = 주차 미정
             if (!unit) return (err.textContent = "단원명을 입력해 주세요.");
             if (quiz) {
-              if (quiz.unit !== unit || quiz.weekId !== weekId || quiz.max !== max) {
+              if (quiz.unit !== unit || quiz.weekId !== weekId || quiz.max !== max || !!quiz.half !== halfChk.checked) {
                 quiz.unit = unit;
                 quiz.weekId = weekId;
                 quiz.max = max;
+                if (halfChk.checked) quiz.half = true;
+                else delete quiz.half;
                 markAcademy(S.selAcademy);
               }
             } else {
-              const q = { id: randomHexId(6), unit, weekId, max, stats: null };
+              const q = { id: randomHexId(6), unit, weekId, max, ...(halfChk.checked ? { half: true } : {}), stats: null };
               blob.quizzes = blob.quizzes || [];
               blob.quizzes.push(q);
               S.selQuiz.set(S.selAcademy, q.id);
               markAcademy(S.selAcademy);
               if (multiAcademy && allChk.checked) {
-                copyResultToast(unit, copyQuizToOtherAcademies(unit, weekId, max));
+                copyResultToast(unit, copyQuizToOtherAcademies(unit, weekId, max, halfChk.checked));
               }
             }
             overlay.remove();
@@ -1115,6 +1126,14 @@ function renderScoresTab(container) {
   card.appendChild(
     el("p", { class: "hint", text: `단원: ${quiz.unit} · 응시 주차: ${weekLabelOf(academyBlob().weeks, quiz.weekId) || "미정"} · 만점 ${quiz.max}점 (변경은 '퀴즈 관리')` })
   );
+  if (quiz.half) {
+    card.appendChild(
+      el("p", {
+        class: "hint",
+        text: `2배 출제 퀴즈 — 점수는 원점수(만점 ${quiz.max}점)로 입력하세요. 학생·보고서 화면에는 절반(만점 ${quiz.max / 2}점 기준)으로 환산되어 표시됩니다.`,
+      })
+    );
+  }
 
   const students = activeStudentsOf(S.selAcademy);
 
