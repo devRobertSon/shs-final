@@ -30,6 +30,17 @@ GitHub Pages(main 브랜치, `Deploy from a branch`)로만 배포하며 **서버
 - 학원별 키 분리: A학원 학생은 B학원 공지/자료를 복호화할 수 없어야 한다.
 - 학생 삭제 시 소속 학원 키 자동 교체(rotation)가 유지되어야 한다 (`js/admin.js`).
 
+## 장애 대응 (사용자 지정)
+
+- 발행/배포가 멈추는 등 GitHub 쪽 이상이 의심되면 **먼저 githubstatus.com을 확인**해
+  (요약 API: `https://www.githubstatus.com/api/v2/summary.json`) 어떤 컴포넌트에 무슨
+  장애가 진행 중인지 정리해서 알려준다. 저장소 쪽 조치는 그 다음이다.
+- 세션 네트워크 정책이 접근을 막으면(403 정책 거부) 그 사실을 밝히고, 사용자가 직접
+  확인할 주소(githubstatus.com)와 볼 항목(Pages / Actions / API Requests)을 안내한다.
+- 참고: 2026-08-06 밤 GitHub Pages 배포 장애 때 배포가 `deployment_in_progress`에서
+  무한 대기했고, 취소/재실행/빈 커밋/Pages 리셋 모두 무효였다 — 이런 패턴이면
+  서비스 장애이므로 반복 재시도 대신 상태 확인과 대기를 안내할 것.
+
 ## 실데이터 보호 (절대 규칙)
 
 - `data/` 폴더에는 **선생님이 실제 발행한 학생 데이터**가 들어 있다 (2026-07-06 첫 발행 이후).
