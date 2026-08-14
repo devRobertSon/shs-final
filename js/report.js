@@ -2,7 +2,7 @@
 // 보고서는 브라우저 메모리에서만 만들어지고 인쇄(PDF 저장)로만 나간다.
 // 저장소에는 절대 커밋되지 않는다 (실명·점수 포함).
 import { el } from "./ui.js";
-import { sortWeeks, sortQuizzes, ATTENDANCE, ATTENDANCE_ORDER, toYMD, isNoShow, isNA, dispScore, dispMax } from "./store.js";
+import { sortWeeks, sortQuizzes, ATTENDANCE, ATTENDANCE_ORDER, toYMD, isNoShow, isNA, triState, dispScore, dispMax } from "./store.js";
 
 // 입력:
 //   academyName, weeks(학원 blob), quizzes(학원 blob의 단원 퀴즈 목록),
@@ -117,15 +117,56 @@ export function buildDirectorReport({
   }
   doc.appendChild(section("출석 현황", attChildren));
 
-  // ---------- ③ 지난 주 숙제 수행 (P) ----------
+  // ---------- ③ 지난 주 숙제 수행 (P) — 과학 항목별 + 수학(주차당 1칸, 체크한 주차만) ----------
   if (!P) {
     info("이전 주차가 없어 숙제·퀴즈 섹션은 표시되지 않습니다 (첫 주차).");
   } else {
     const hwChildren = [];
     const items = P.homework || [];
+    const mathOn = !!P.mathHomework; // 이 주차에 수학 숙제 체크를 사용했는지
+    const mathStateOf = (s) => triState(s.blob.weeks?.[P.id] || {}, "mathHomework");
+    const mathChip = (st) =>
+      st === "done"
+        ? el("span", { class: "rd-check", text: "✓" })
+        : st === "hold"
+          ? el("span", { class: "rd-hold", text: "◌" })
+          : st === "na"
+            ? el("span", { class: "rd-na", text: "－" })
+            : el("span", { class: "rd-dash", text: "–" });
+    const mathNote = () => {
+      let done = 0;
+      let holds = 0;
+      let nas = 0;
+      for (const s of students) {
+        const st = mathStateOf(s);
+        if (st === "done") done++;
+        else if (st === "hold") holds++;
+        else if (st === "na") nas++;
+      }
+      const denom = students.length - holds - nas;
+      return (
+        `수학 숙제 · 했음 ${done}명 / ${denom}명` +
+        (holds ? ` · ◌ 확인 전 ${holds}명` : "") +
+        (nas ? ` · － 해당 없음 ${nas}명` : "")
+      );
+    };
     if (!items.length) {
       warn(`지난 주(${P.label})에 등록된 숙제 항목이 없습니다.`);
-      hwChildren.push(el("p", { class: "rd-empty", text: "(숙제 항목 없음)" }));
+      hwChildren.push(el("p", { class: "rd-empty", text: "(과학 숙제 항목 없음)" }));
+      if (mathOn) {
+        const tbl = el("table", { class: "rd-table" });
+        tbl.appendChild(el("tr", {}, [el("th", { text: "이름" }), el("th", { text: "수학 숙제" })]));
+        for (const s of students) {
+          tbl.appendChild(
+            el("tr", {}, [
+              el("td", { class: "rd-name", text: s.name }),
+              el("td", {}, [mathChip(mathStateOf(s))]),
+            ])
+          );
+        }
+        hwChildren.push(el("div", { class: "rd-table-wrap" }, [tbl]));
+        hwChildren.push(el("p", { class: "rd-note", text: mathNote() }));
+      }
     } else {
       hwChildren.push(
         el("ol", { class: "rd-list" }, items.map((it) => el("li", { text: it.text })))
@@ -136,6 +177,7 @@ export function buildDirectorReport({
           el("th", { text: "이름" }),
           ...items.map((_, i) => el("th", { text: `${i + 1}번` })),
           el("th", { text: "완료율" }),
+          mathOn ? el("th", { text: "수학" }) : null,
         ])
       );
       let doneAll = 0;
@@ -179,6 +221,7 @@ export function buildDirectorReport({
                   ]),
               rate == null ? null : el("span", { text: `${rate}%` }),
             ]),
+            mathOn ? el("td", {}, [mathChip(mathStateOf(s))]) : null,
           ])
         );
       }
@@ -188,11 +231,12 @@ export function buildDirectorReport({
         el("p", {
           class: "rd-note",
           text:
-            `전체 완료율 · ${totalRate}%` +
+            `${mathOn ? "과학 숙제 " : ""}전체 완료율 · ${totalRate}%` +
             (holdAll ? ` (◌ 확인 전 ${holdAll}건은 결석 등으로 제외)` : "") +
             (naAll ? ` (－ 해당 없음 ${naAll}건은 수강 전 등으로 제외)` : ""),
         })
       );
+      if (mathOn) hwChildren.push(el("p", { class: "rd-note", text: mathNote() }));
       if (holdAll) {
         info(`지난 주 숙제 '확인 전(◌)' — ${holdNames.join(", ")}: 다음 수업에서 확인 후 체크하세요.`);
       }
