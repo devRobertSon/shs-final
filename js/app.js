@@ -439,7 +439,7 @@ function renderQuiz(container) {
             `${dispScore(q, myScores[q.id])} / ${dispMax(q)}`,
             noClass[q.id] ? el("span", { class: "nc-badge", text: "미수강" }) : null,
           ])
-        : el("td", { class: "num", text: isNoShow(myScores, q.id) ? "미응시" : "–" });
+        : el("td", { class: "num", text: isNoShow(myScores, q.id) ? (noClass[q.id] ? "미수강" : "미응시") : "–" });
     tbl.appendChild(
       el("tr", {}, [
         el("td", { class: "name-cell", text: unitShort(q.unit) }),
@@ -1084,7 +1084,7 @@ function renderTeacherScores(container, weeks, state, rerender) {
             ]);
           return el("td", { class: "num" }, [
             isNoShow(r.byQuiz, q.id)
-              ? el("span", { class: "t-noshow", text: "미응시" })
+              ? el("span", { class: "t-noshow", text: r.noClass?.[q.id] ? "미수강" : "미응시" })
               : el("span", { class: "t-dash", text: "–" }),
           ]);
         }),

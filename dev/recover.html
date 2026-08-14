@@ -236,7 +236,8 @@
                 el("td", { class: "name", text: st.name }),
                 ...quizzes.map((q) => {
                   const v = sBlobs.get(st.fileId)?.quizzes?.[q.id];
-                  if (v === null) return el("td", { class: "dim", text: "미응시" });
+                  if (v === null)
+                    return el("td", { class: "dim", text: sBlobs.get(st.fileId)?.quizzesNoClass?.[q.id] ? "미수강" : "미응시" });
                   if (v == null) return el("td", { class: "dim", text: "–" });
                   return el("td", { text: String(v) });
                 }),
