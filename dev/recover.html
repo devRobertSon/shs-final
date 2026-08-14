@@ -285,23 +285,28 @@
               );
               card.appendChild(el("div", { class: "table-wrap" }, [el("table", {}, [head, ...body])]));
             }
-            // 숙제 체크 매트릭스 (숙제 항목이 있는 주차만; 열 번호 = 위 목록 순서)
-            if (hwItems.length && students.length) {
+            // 숙제 체크 매트릭스 (과학 항목 열 번호 = 위 목록 순서, 수학은 주차당 1칸)
+            const hasMath = !!w.mathHomework;
+            if ((hwItems.length || hasMath) && students.length) {
               const head = el("tr", {}, [
                 el("th", { class: "name", text: "숙제" }),
                 ...hwItems.map((_, i) => el("th", { text: String(i + 1) })),
+                hasMath ? el("th", { text: "수학" }) : null,
               ]);
-              const body = students.map((st) =>
-                el("tr", {}, [
+              const mark = (present, v) => {
+                if (!present) return el("td", { text: "" });
+                if (v === true) return el("td", { text: "✓" });
+                return el("td", { class: "dim", text: v === null ? "◌" : "－" });
+              };
+              const body = students.map((st) => {
+                const wd = sBlobs.get(st.fileId)?.weeks?.[w.id] || {};
+                const hw = wd.homework || {};
+                return el("tr", {}, [
                   el("td", { class: "name", text: st.name }),
-                  ...hwItems.map((h) => {
-                    const hw = sBlobs.get(st.fileId)?.weeks?.[w.id]?.homework || {};
-                    if (!(h.id in hw)) return el("td", { text: "" });
-                    if (hw[h.id] === true) return el("td", { text: "✓" });
-                    return el("td", { class: "dim", text: hw[h.id] === null ? "◌" : "－" });
-                  }),
-                ])
-              );
+                  ...hwItems.map((h) => mark(h.id in hw, hw[h.id])),
+                  hasMath ? mark("mathHomework" in wd, wd.mathHomework) : null,
+                ]);
+              });
               card.appendChild(el("div", { class: "table-wrap" }, [el("table", {}, [head, ...body])]));
             }
           }

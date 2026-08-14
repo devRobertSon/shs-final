@@ -17,7 +17,7 @@ import {
   normalizePassword,
   b64encode,
 } from "./crypto.js";
-import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER, isNoShow, isNA } from "./store.js";
+import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER, isNoShow, isNA, triState } from "./store.js";
 import { $, el, clear, toast, confirmModal, copyText, setBusy } from "./ui.js";
 import { runWizard, createStudent, emptyStudentBlob, emptyAcademyBlob, printCodeCards } from "./setup.js";
 import { buildDirectorReport } from "./report.js";
@@ -310,7 +310,8 @@ function renderMain() {
     ["weekly", "주간 입력"],
     ["students", "학생 관리"],
     ["scores", "점수 입력"],
-    ["homework", "숙제 체크"],
+    ["homework", "과학 숙제"],
+    ["mathhw", "수학 숙제"],
     ["attendance", "출석"],
     ["reports", "리포트"],
     ["notices", "공지"],
@@ -347,6 +348,7 @@ function renderTab() {
     students: renderStudentsTab,
     scores: renderScoresTab,
     homework: renderHomeworkTab,
+    mathhw: renderMathHomeworkTab,
     attendance: renderAttendanceTab,
     reports: renderReportsTab,
     notices: renderNoticesTab,
@@ -366,17 +368,24 @@ function droppedStudentsOf(academyFileId) {
   return S.roster.students.filter((s) => s.academyFileId === academyFileId && s.active !== false && s.dropped);
 }
 function markDroppedForNewSessions(academyFileId, weekId, dates) {
+  if (!dates.length) return;
   for (const st of droppedStudentsOf(academyFileId)) {
     const blob = S.students.get(st.fileId);
     if (!blob) continue;
     blob.weeks[weekId] = blob.weeks[weekId] || {};
-    blob.weeks[weekId].attendance = blob.weeks[weekId].attendance || {};
+    const wd = blob.weeks[weekId];
+    wd.attendance = wd.attendance || {};
     let touched = false;
     for (const d of dates) {
-      if (!(d in blob.weeks[weekId].attendance)) {
-        blob.weeks[weekId].attendance[d] = "D";
+      if (!(d in wd.attendance)) {
+        wd.attendance[d] = "D";
         touched = true;
       }
+    }
+    // 새로 수업일이 생긴 주차의 수학 숙제도 '해당 없음'
+    if (!("mathHomework" in wd)) {
+      wd.mathHomework = false;
+      touched = true;
     }
     if (touched) markStudent(st.fileId);
   }
@@ -933,7 +942,8 @@ function renderStudentsTab(container) {
           const ab = academyBlob(aEntry.fileId);
           let marked = 0;
           for (const w of ab?.weeks || []) {
-            const wd = {};
+            // 수강 전 주차 — 수학 숙제도 '해당 없음'
+            const wd = { mathHomework: false };
             if ((w.sessions || []).length) {
               wd.attendance = Object.fromEntries(w.sessions.map((d) => [d, "N"]));
               marked++;
@@ -942,7 +952,7 @@ function renderStudentsTab(container) {
               wd.homework = Object.fromEntries(w.homework.map((h) => [h.id, false]));
               marked++;
             }
-            if (Object.keys(wd).length) blob.weeks[w.id] = wd;
+            blob.weeks[w.id] = wd;
           }
           for (const q of ab?.quizzes || []) {
             blob.quizzes = blob.quizzes || {};
@@ -1566,39 +1576,43 @@ function renderWeeklyTab(container) {
     })
   );
 
-  // ① 지난 주 숙제 체크
-  if (prev) container.appendChild(homeworkCard(prev, { title: `① 지난 주 숙제 체크 — ${prev.label}` }));
-  else container.appendChild(emptyCard("① 지난 주 숙제 체크", "이전 주차가 없습니다 (첫 주차)."));
+  // ① 지난 주 과학 숙제 체크
+  if (prev) container.appendChild(homeworkCard(prev, { title: `① 지난 주 과학 숙제 체크 — ${prev.label}` }));
+  else container.appendChild(emptyCard("① 지난 주 과학 숙제 체크", "이전 주차가 없습니다 (첫 주차)."));
 
-  // ② 지난 주 퀴즈 점수 입력
+  // ② 지난 주 수학 숙제 체크
+  if (prev) container.appendChild(mathHomeworkCard(prev, { title: `② 지난 주 수학 숙제 체크 — ${prev.label}` }));
+  else container.appendChild(emptyCard("② 지난 주 수학 숙제 체크", "이전 주차가 없습니다 (첫 주차)."));
+
+  // ③ 지난 주 퀴즈 점수 입력
   const prevQuizzes = prev ? (academyBlob().quizzes || []).filter((q) => q.weekId === prev.id) : [];
   if (prevQuizzes.length) {
     for (const q of prevQuizzes) {
-      container.appendChild(scoresCard(q, { title: `② 지난 주 퀴즈 점수 — ${q.unit}` }));
+      container.appendChild(scoresCard(q, { title: `③ 지난 주 퀴즈 점수 — ${q.unit}` }));
     }
   } else {
     container.appendChild(
-      emptyCard("② 지난 주 퀴즈 점수 입력", prev ? "지난 주차에 등록된 단원 퀴즈가 없습니다." : "이전 주차가 없습니다 (첫 주차).")
+      emptyCard("③ 지난 주 퀴즈 점수 입력", prev ? "지난 주차에 등록된 단원 퀴즈가 없습니다." : "이전 주차가 없습니다 (첫 주차).")
     );
   }
 
-  // ③ 이번 주 출석 체크
-  container.appendChild(attendanceCard(week, { title: `③ 이번 주 출석 체크 — ${week.label}` }));
+  // ④ 이번 주 출석 체크
+  container.appendChild(attendanceCard(week, { title: `④ 이번 주 출석 체크 — ${week.label}` }));
 
-  // ④ 이번 주 진도
-  container.appendChild(progressCard(week, { title: "④ 이번 주 진도" }));
+  // ⑤ 이번 주 진도
+  container.appendChild(progressCard(week, { title: "⑤ 이번 주 진도" }));
 
-  // ⑤ 이번 주 숙제 입력 (체크는 다음 주 ①에서)
-  const hwCard = homeworkCard(week, { title: `⑤ 이번 주 숙제 입력 — ${week.label}`, checks: false });
+  // ⑥ 이번 주 과학 숙제 입력 (체크는 다음 주 ①에서)
+  const hwCard = homeworkCard(week, { title: `⑥ 이번 주 과학 숙제 입력 — ${week.label}`, checks: false });
   hwCard.appendChild(
-    el("p", { class: "hint", text: "학생별 체크는 다음 주 '주간 입력'의 ①에서 하게 됩니다. (또는 '숙제 체크' 탭)" })
+    el("p", { class: "hint", text: "학생별 체크는 다음 주 '주간 입력'의 ①에서 하게 됩니다. (또는 '과학 숙제' 탭)" })
   );
   container.appendChild(hwCard);
 
-  // ⑥ 이번 주 퀴즈(범위) 등록
-  const qCard = el("div", { class: "card" }, [el("h2", { text: `⑥ 이번 주 퀴즈 등록 — ${week.label}` })]);
+  // ⑦ 이번 주 퀴즈(범위) 등록
+  const qCard = el("div", { class: "card" }, [el("h2", { text: `⑦ 이번 주 퀴즈 등록 — ${week.label}` })]);
   qCard.appendChild(
-    el("p", { class: "hint", text: "이번 주에 볼 단원 퀴즈를 등록해 두면, 다음 주 ②에서 점수를 입력하게 됩니다." })
+    el("p", { class: "hint", text: "이번 주에 볼 단원 퀴즈를 등록해 두면, 다음 주 ③에서 점수를 입력하게 됩니다." })
   );
   const thisQuizzes = (academyBlob().quizzes || []).filter((q) => q.weekId === week.id);
   if (!thisQuizzes.length) qCard.appendChild(el("p", { class: "empty", text: "이번 주차에 등록된 퀴즈가 없습니다." }));
@@ -1617,12 +1631,12 @@ function renderWeeklyTab(container) {
   container.appendChild(qCard);
 }
 
-// ---------- ③ 숙제 체크 ----------
+// ---------- ③ 과학 숙제 체크 ----------
 function renderHomeworkTab(container) {
   toolbar(container);
   const week = selectedWeek();
   if (!week) {
-    const card = el("div", { class: "card" }, [el("h2", { text: "숙제 체크" })]);
+    const card = el("div", { class: "card" }, [el("h2", { text: "과학 숙제" })]);
     card.appendChild(el("p", { class: "empty", text: "'주차 관리'에서 먼저 주차를 만들어 주세요." }));
     container.appendChild(card);
     return;
@@ -1630,9 +1644,116 @@ function renderHomeworkTab(container) {
   container.appendChild(homeworkCard(week));
 }
 
+// ---------- ③-2 수학 숙제 체크 (주차당 1칸) ----------
+function renderMathHomeworkTab(container) {
+  toolbar(container);
+  const week = selectedWeek();
+  if (!week) {
+    const card = el("div", { class: "card" }, [el("h2", { text: "수학 숙제" })]);
+    card.appendChild(el("p", { class: "empty", text: "'주차 관리'에서 먼저 주차를 만들어 주세요." }));
+    container.appendChild(card);
+    return;
+  }
+  container.appendChild(mathHomeworkCard(week));
+}
+
+// 수학 숙제 카드 — 수학 숙제 탭과 주간 입력 탭에서 공용.
+// 항목 목록 없이 주차마다 '했는지'만 학생별 1칸으로 체크한다.
+// 처음 체크하는 순간 week.mathHomework(사용 표시)가 켜지고, 켜진 주차만
+// 학생·학부모/선생님 화면에 나타난다 (도입 전 주차가 '안 함'으로 보이는 것 방지).
+function mathHomeworkCard(week, { title = "수학 숙제 체크" } = {}) {
+  const card = el("div", { class: "card" }, [el("h2", { text: title })]);
+  const students = activeStudentsOf(S.selAcademy);
+  if (!students.length) {
+    card.appendChild(el("p", { class: "empty", text: "학생이 없습니다." }));
+    return card;
+  }
+  const markUsed = () => {
+    if (!week.mathHomework) {
+      week.mathHomework = true;
+      markAcademy(S.selAcademy);
+    }
+  };
+  const applyBtn = (btn, state) => {
+    btn.classList.toggle("on", state === "done");
+    btn.classList.toggle("hold", state === "hold");
+    btn.classList.toggle("na", state === "na");
+    btn.textContent = state === "done" ? "✓" : state === "hold" ? "◌" : state === "na" ? "－" : "";
+  };
+  const tbl = el("table", { class: "grid", style: "margin-top:4px" });
+  tbl.appendChild(
+    el("tr", {}, [
+      el("th", { class: "name-cell", text: "이름" }),
+      el("th", { text: "출석" }),
+      el("th", {}, [
+        el("div", { text: "수학 숙제" }),
+        el("button", {
+          class: "btn btn-small",
+          text: "전체 ✓",
+          onclick: () => {
+            for (const st of students) {
+              const blob = S.students.get(st.fileId);
+              blob.weeks[week.id] = blob.weeks[week.id] || {};
+              const wd = blob.weeks[week.id];
+              // 확인 전(◌)·해당 없음(－)은 전체 완료로 덮어쓰지 않는다
+              if (triState(wd, "mathHomework") === "none") {
+                wd.mathHomework = true;
+                markStudent(st.fileId);
+              }
+            }
+            markUsed();
+            renderTab();
+          },
+        }),
+      ]),
+    ])
+  );
+  for (const st of students) {
+    const blob = S.students.get(st.fileId);
+    const att = blob.weeks?.[week.id]?.attendance || {};
+    const attText = (week.sessions || []).length
+      ? week.sessions.map((d) => ATTENDANCE[att[d]]?.label || "–").join(" · ")
+      : "–";
+    const absent = (week.sessions || []).some((d) => att[d] === "A" || att[d] === "X");
+    const btn = el("button", {
+      class: "cell-toggle",
+      onclick: () => {
+        blob.weeks[week.id] = blob.weeks[week.id] || {};
+        const wd = blob.weeks[week.id];
+        const cur = triState(wd, "mathHomework");
+        if (cur === "none") wd.mathHomework = true;
+        else if (cur === "done") wd.mathHomework = null; // 확인 전(결석)
+        else if (cur === "hold") wd.mathHomework = false; // 해당 없음(수강 전·드랍 등)
+        else delete wd.mathHomework;
+        applyBtn(btn, triState(wd, "mathHomework"));
+        markUsed();
+        markStudent(st.fileId);
+      },
+    });
+    applyBtn(btn, triState(blob.weeks?.[week.id], "mathHomework"));
+    tbl.appendChild(
+      el("tr", {}, [
+        el("td", { class: "name-cell", text: st.name }),
+        el("td", { class: `hw-att${absent ? " abs" : ""}`, text: attText }),
+        el("td", {}, [btn]),
+      ])
+    );
+  }
+  card.appendChild(el("div", { class: "table-wrap" }, [tbl]));
+  card.appendChild(
+    el("p", {
+      class: "hint",
+      text:
+        "칸을 누를 때마다 ✓ 했음 → ◌ 확인 전(결석 등) → － 해당 없음(수강 전·드랍 등) → 빈칸(안 함) 순으로 바뀝니다. " +
+        "한 번이라도 체크한 주차만 학생·학부모/선생님 화면에 표시됩니다.",
+    })
+  );
+  return card;
+}
+
 // 숙제 카드 — 숙제 체크 탭과 주간 입력 탭에서 공용
 // checks=false면 항목 입력만 표시 (이번 주 숙제 '입력' 용도 — 체크는 다음 주에)
-function homeworkCard(week, { title = "숙제 체크", checks = true } = {}) {
+function homeworkCard(week, { title = "과학 숙제 체크", checks = true } = {}) {
   const card = el("div", { class: "card" }, [el("h2", { text: title })]);
   week.homework = week.homework || [];
 
@@ -2741,13 +2862,17 @@ function buildTeacherSnapshot(academyFileId) {
     byQuiz: { ...(S.students.get(st.fileId)?.quizzes || {}) },
     noClass: { ...(S.students.get(st.fileId)?.quizzesNoClass || {}) },
   }));
-  // 숙제 체크 상태 (주차별 학생×항목)
+  // 숙제 체크 상태 (주차별 학생×항목 + 수학 숙제 1칸)
   const homework = {};
   for (const w of aBlob.weeks || []) {
-    homework[w.id] = students.map((st) => ({
-      name: st.name,
-      byItem: { ...(S.students.get(st.fileId)?.weeks?.[w.id]?.homework || {}) },
-    }));
+    homework[w.id] = students.map((st) => {
+      const wd = S.students.get(st.fileId)?.weeks?.[w.id] || {};
+      return {
+        name: st.name,
+        byItem: { ...(wd.homework || {}) },
+        ...("mathHomework" in wd ? { math: wd.mathHomework } : {}),
+      };
+    });
   }
   // 개별 리포트: 전달사항 텍스트 + 분석 PDF 유무(파일명만 — 파일 자체는 학생 키 암호화라 포함하지 않음)
   const reports = {};

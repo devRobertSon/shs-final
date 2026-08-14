@@ -11,6 +11,7 @@ import {
   ATTENDANCE,
   isNoShow,
   isNA,
+  triState,
   dispScore,
   dispMax,
   toYMD,
@@ -214,6 +215,7 @@ function renderDashboard() {
   const renderTab = (id) => {
     clear(content);
     if (id === "hw") renderHomework(content, weeks);
+    else if (id === "mathhw") renderMathHomework(content, weeks);
     else if (id === "quiz") renderQuiz(content);
     else if (id === "report") renderReport(content);
     else if (id === "notice") renderNotices(content);
@@ -229,7 +231,8 @@ function renderDashboard() {
 
   // 우선순위 순서: 해야 할 것(숙제) → 놓치면 안 되는 것(공지) → 확인할 것(퀴즈·리포트) → 기록 → 참고
   const tabDefs = [
-    { id: "hw", label: "숙제" },
+    { id: "hw", label: "과학 숙제" },
+    { id: "mathhw", label: "수학 숙제" },
     { id: "notice", label: "공지사항" },
     { id: "quiz", label: "퀴즈" },
     { id: "report", label: "리포트" },
@@ -280,12 +283,12 @@ function weekData(weekId) {
   return (session.student.weeks || {})[weekId] || {};
 }
 
-// ---------- ① 숙제 (전체 주차, 최신순) ----------
+// ---------- ① 과학 숙제 (전체 주차, 최신순) ----------
 function renderHomework(container, weeks) {
-  const card = el("div", { class: "card" }, [el("h2", { text: "숙제" })]);
+  const card = el("div", { class: "card" }, [el("h2", { text: "과학 숙제" })]);
   const withHw = [...weeks].reverse().filter((w) => (w.homework || []).length);
   if (!withHw.length) {
-    card.appendChild(el("p", { class: "empty", text: "아직 등록된 숙제가 없습니다." }));
+    card.appendChild(el("p", { class: "empty", text: "아직 등록된 과학 숙제가 없습니다." }));
     container.appendChild(card);
     return;
   }
@@ -295,7 +298,7 @@ function renderHomework(container, weeks) {
   // 블록 제목: 주차 이름 대신 그 주 첫 수업 날짜 (예: "7월 12일 숙제")
   const hwBlockTitle = (week) => {
     const ss = week.sessions || [];
-    return ss.length ? `${fmtDateK(ss[0])} 숙제` : `${week.label} 숙제`;
+    return ss.length ? `${fmtDateK(ss[0])} 과학 숙제` : `${week.label} 과학 숙제`;
   };
   let anyHold = false;
   let anyNA = false;
@@ -352,6 +355,55 @@ function renderHomework(container, weeks) {
   if (anyNA) {
     card.appendChild(
       el("p", { class: "hint", text: "－ 수강 전(중간 등록) 등으로 이 숙제의 대상이 아니어서 완료율에서 제외된 항목입니다." })
+    );
+  }
+  container.appendChild(card);
+}
+
+// ---------- ①-2 수학 숙제 (주차마다 했는지 1칸 체크, 최신순) ----------
+// 선생님이 체크를 사용한 주차(week.mathHomework)만 표시한다.
+function renderMathHomework(container, weeks) {
+  const card = el("div", { class: "card" }, [el("h2", { text: "수학 숙제" })]);
+  const shown = [...weeks].reverse().filter((w) => w.mathHomework);
+  if (!shown.length) {
+    card.appendChild(el("p", { class: "empty", text: "아직 수학 숙제 확인 기록이 없습니다." }));
+    container.appendChild(card);
+    return;
+  }
+  card.appendChild(
+    el("p", { class: "hint", text: "주마다 수학 숙제를 했는지 선생님이 확인한 결과입니다. (최근 수업부터)" })
+  );
+  let anyHold = false;
+  let anyNA = false;
+  const ul = el("ul", { class: "hw-list" });
+  for (const week of shown) {
+    const st = triState(weekData(week.id), "mathHomework");
+    if (st === "hold") anyHold = true;
+    if (st === "na") anyNA = true;
+    const ss = week.sessions || [];
+    const label = ss.length ? `${fmtDateK(ss[0])} 수학 숙제` : `${week.label} 수학 숙제`;
+    ul.appendChild(
+      el("li", { class: st === "done" ? "hw-done" : "" }, [
+        el("span", {
+          class: `hw-mark ${st === "done" ? "done" : st === "hold" ? "hold" : st === "na" ? "na" : "todo"}`,
+          text: st === "done" ? "✓" : st === "hold" ? "◌" : st === "na" ? "－" : "",
+        }),
+        el("span", {
+          class: "hw-text",
+          text: `${label} — ${st === "done" ? "했음" : st === "hold" ? "확인 전" : st === "na" ? "해당 없음" : "안 함"}`,
+        }),
+      ])
+    );
+  }
+  card.appendChild(ul);
+  if (anyHold) {
+    card.appendChild(
+      el("p", { class: "hint", text: "◌ 결석 등으로 아직 확인하지 못한 주입니다. 다음 수업에서 확인합니다." })
+    );
+  }
+  if (anyNA) {
+    card.appendChild(
+      el("p", { class: "hint", text: "－ 수강 전(중간 등록)·수강 중단 등으로 확인 대상이 아니었던 주입니다." })
     );
   }
   container.appendChild(card);
@@ -855,15 +907,16 @@ function renderTeacherAttendance(container, weeks, state, rerender) {
 // ---------- 숙제 체크 현황 (학생×주차 완료율 매트릭스 — 좌우 스크롤) ----------
 function renderTeacherHomework(container, weeks) {
   const { teacher } = session;
-  const card = el("div", { class: "card" }, [el("h2", { text: "숙제 체크 현황" })]);
+  const card = el("div", { class: "card" }, [el("h2", { text: "과학 숙제 현황" })]);
   const hwWeeks = [...weeks].reverse().filter((w) => (w.homework || []).length);
   if (!hwWeeks.length) {
-    card.appendChild(el("p", { class: "empty", text: "등록된 숙제가 없습니다." }));
+    card.appendChild(el("p", { class: "empty", text: "등록된 과학 숙제가 없습니다." }));
     container.appendChild(card);
+    renderTeacherMathHomework(container, weeks);
     return;
   }
   card.appendChild(
-    el("p", { class: "hint", text: "주차(수업)별 숙제 완료율입니다. 최신 주차부터 — 옆으로 밀어서 지난 주차를 보세요." })
+    el("p", { class: "hint", text: "주차(수업)별 과학 숙제 완료율입니다. 최신 주차부터 — 옆으로 밀어서 지난 주차를 보세요." })
   );
 
   // 주차별 이름→체크상태 맵 (스냅샷은 주차 단위 배열)
@@ -937,6 +990,81 @@ function renderTeacherHomework(container, weeks) {
     const parts = [];
     if (anyHold) parts.push("◌ = 결석 등으로 확인 전인 숙제 포함 (완료율 계산에서 제외)");
     if (anyNA) parts.push("－ = 수강 전 등 해당 없음 (완료율 계산에서 제외)");
+    card.appendChild(el("p", { class: "hint", text: parts.join(" · ") }));
+  }
+  container.appendChild(card);
+  renderTeacherMathHomework(container, weeks);
+}
+
+// 수학 숙제 현황 — 주차마다 1칸(했음/확인 전/해당 없음/안 함), 체크를 사용한 주차만
+function renderTeacherMathHomework(container, weeks) {
+  const { teacher } = session;
+  const card = el("div", { class: "card" }, [el("h2", { text: "수학 숙제 현황" })]);
+  const mathWeeks = [...weeks].reverse().filter((w) => w.mathHomework);
+  if (!mathWeeks.length) {
+    card.appendChild(el("p", { class: "empty", text: "아직 수학 숙제 확인 기록이 없습니다." }));
+    container.appendChild(card);
+    return;
+  }
+  card.appendChild(
+    el("p", { class: "hint", text: "주차(수업)별로 수학 숙제를 했는지 확인한 결과입니다. 최신 주차부터 — 옆으로 밀어서 지난 주차를 보세요." })
+  );
+  const byWeek = new Map(); // weekId -> Map(name -> 스냅샷 행)
+  const names = [];
+  for (const w of mathWeeks) {
+    const m = new Map();
+    for (const r of teacher.snapshot?.homework?.[w.id] || []) {
+      m.set(r.name, r);
+      if (!names.includes(r.name)) names.push(r.name);
+    }
+    byWeek.set(w.id, m);
+  }
+  const stOf = (r) => (r && "math" in r ? (r.math === true ? "done" : r.math === null ? "hold" : "na") : "none");
+  const shortWeek = (w) => shortLabel(w.label) || w.id;
+  const tbl = el("table", { class: "grid" });
+  tbl.appendChild(
+    el("tr", {}, [
+      el("th", { class: "name-cell", text: "이름" }),
+      ...mathWeeks.map((w) => el("th", { text: shortWeek(w) })),
+    ])
+  );
+  let anyHold = false;
+  let anyNA = false;
+  for (const name of names) {
+    tbl.appendChild(
+      el("tr", {}, [
+        el("td", { class: "name-cell", text: name }),
+        ...mathWeeks.map((w) => {
+          const st = stOf(byWeek.get(w.id).get(name));
+          if (st === "hold") anyHold = true;
+          if (st === "na") anyNA = true;
+          if (st === "done") return el("td", { class: "num", text: "✓" });
+          if (st === "hold") return el("td", { class: "num" }, [el("span", { class: "hw-hold", text: "◌" })]);
+          if (st === "na") return el("td", { class: "num" }, [el("span", { class: "hw-na", text: "－" })]);
+          return el("td", { class: "num" }, [el("span", { class: "t-dash", text: "안 함" })]);
+        }),
+      ])
+    );
+  }
+  // 학원 평균 행 (했음 비율 — ◌·－ 제외)
+  const avgRow = el("tr", { class: "t-avg-row" }, [el("td", { class: "name-cell", text: "학원 평균" })]);
+  for (const w of mathWeeks) {
+    let done = 0;
+    let denom = 0;
+    for (const name of names) {
+      const st = stOf(byWeek.get(w.id).get(name));
+      if (st === "hold" || st === "na") continue;
+      denom++;
+      if (st === "done") done++;
+    }
+    avgRow.appendChild(el("td", { class: "num", text: denom ? `${Math.round((done / denom) * 100)}%` : "–" }));
+  }
+  tbl.appendChild(avgRow);
+  card.appendChild(el("div", { class: "table-wrap" }, [tbl]));
+  if (anyHold || anyNA) {
+    const parts = [];
+    if (anyHold) parts.push("◌ = 결석 등으로 확인 전 (비율 계산에서 제외)");
+    if (anyNA) parts.push("－ = 수강 전·수강 중단 등 해당 없음 (비율 계산에서 제외)");
     card.appendChild(el("p", { class: "hint", text: parts.join(" · ") }));
   }
   container.appendChild(card);
