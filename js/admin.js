@@ -358,6 +358,108 @@ function renderTab() {
   render(contentEl);
 }
 
+// ---------- 드랍(수강 중단) 학생 자동 표시 ----------
+// 드랍으로 표시된 학생은 이후 새로 만드는 수업일 → 출석 '드랍(D)',
+// 새 숙제 항목 → 해당 없음(－, false), 새 퀴즈 → 미응시(null)로 자동 기록된다.
+// 과거 기록은 건드리지 않는다.
+function droppedStudentsOf(academyFileId) {
+  return S.roster.students.filter((s) => s.academyFileId === academyFileId && s.active !== false && s.dropped);
+}
+function markDroppedForNewSessions(academyFileId, weekId, dates) {
+  for (const st of droppedStudentsOf(academyFileId)) {
+    const blob = S.students.get(st.fileId);
+    if (!blob) continue;
+    blob.weeks[weekId] = blob.weeks[weekId] || {};
+    blob.weeks[weekId].attendance = blob.weeks[weekId].attendance || {};
+    let touched = false;
+    for (const d of dates) {
+      if (!(d in blob.weeks[weekId].attendance)) {
+        blob.weeks[weekId].attendance[d] = "D";
+        touched = true;
+      }
+    }
+    if (touched) markStudent(st.fileId);
+  }
+}
+function markDroppedForNewHomework(academyFileId, weekId, itemId) {
+  for (const st of droppedStudentsOf(academyFileId)) {
+    const blob = S.students.get(st.fileId);
+    if (!blob) continue;
+    blob.weeks[weekId] = blob.weeks[weekId] || {};
+    blob.weeks[weekId].homework = blob.weeks[weekId].homework || {};
+    if (!(itemId in blob.weeks[weekId].homework)) {
+      blob.weeks[weekId].homework[itemId] = false; // 해당 없음(－)
+      markStudent(st.fileId);
+    }
+  }
+}
+function markDroppedForNewQuiz(academyFileId, quizId) {
+  for (const st of droppedStudentsOf(academyFileId)) {
+    const blob = S.students.get(st.fileId);
+    if (!blob) continue;
+    blob.quizzes = blob.quizzes || {};
+    if (!(quizId in blob.quizzes)) {
+      blob.quizzes[quizId] = null; // 미응시 (평균 제외)
+      markStudent(st.fileId);
+    }
+  }
+}
+
+// 드랍 토글. ON: 오늘부터의 기존 수업일 중 미입력 칸도 '드랍(D)'으로 채운다.
+// OFF: 오늘부터의 수업일에서 '드랍(D)' 칸을 미입력으로 되돌린다 (과거 기록은 그대로).
+function toggleDropped(st) {
+  const blob = S.students.get(st.fileId);
+  const weeks = academyBlob(st.academyFileId)?.weeks || [];
+  const today = toYMD(new Date());
+  let n = 0;
+  if (!st.dropped) {
+    st.dropped = true;
+    if (blob) {
+      for (const w of weeks) {
+        for (const d of w.sessions || []) {
+          if (d < today) continue;
+          blob.weeks[w.id] = blob.weeks[w.id] || {};
+          const att = (blob.weeks[w.id].attendance = blob.weeks[w.id].attendance || {});
+          if (!(d in att)) {
+            att[d] = "D";
+            n++;
+          }
+        }
+      }
+      if (n) markStudent(st.fileId);
+    }
+    toast(
+      `${st.name} 학생을 드랍으로 표시했습니다.` +
+        (n ? ` 오늘부터의 수업일 ${n}칸을 '드랍'으로 채웠고,` : " 앞으로") +
+        " 새로 만드는 수업일·숙제·퀴즈는 자동으로 드랍(D)·해당 없음(－)·미응시 처리됩니다. '발행'해야 반영됩니다.",
+      "ok"
+    );
+  } else {
+    delete st.dropped;
+    if (blob) {
+      for (const w of weeks) {
+        const att = blob.weeks?.[w.id]?.attendance;
+        if (!att) continue;
+        for (const d of w.sessions || []) {
+          if (d >= today && att[d] === "D") {
+            delete att[d];
+            n++;
+          }
+        }
+      }
+      if (n) markStudent(st.fileId);
+    }
+    toast(
+      `${st.name} 학생의 드랍을 해제했습니다.` +
+        (n ? ` 오늘부터의 수업일에서 '드랍' ${n}칸을 미입력으로 되돌렸습니다.` : "") +
+        " '발행'해야 반영됩니다.",
+      "ok"
+    );
+  }
+  markRoster();
+  renderTab();
+}
+
 // ---------- 공용: 학원/주차 선택 툴바 ----------
 function academyEntry(fileId = S.selAcademy) {
   return S.roster.academies.find((a) => a.fileId === fileId);
@@ -449,7 +551,9 @@ function copyQuizToOtherAcademies(unit, weekId, max, half) {
     }
     ab.quizzes = ab.quizzes || [];
     if (ab.quizzes.some((x) => norm(x.unit) === norm(unit))) continue;
-    ab.quizzes.push({ id: randomHexId(6), unit, weekId: weekId || null, max, ...(half ? { half: true } : {}), stats: null });
+    const nq = { id: randomHexId(6), unit, weekId: weekId || null, max, ...(half ? { half: true } : {}), stats: null };
+    ab.quizzes.push(nq);
+    markDroppedForNewQuiz(a.fileId, nq.id);
     markAcademy(a.fileId);
     made.push(a.name);
   }
@@ -564,6 +668,7 @@ function editQuiz(quiz) {
               blob.quizzes = blob.quizzes || [];
               blob.quizzes.push(q);
               S.selQuiz.set(S.selAcademy, q.id);
+              markDroppedForNewQuiz(S.selAcademy, q.id);
               markAcademy(S.selAcademy);
               if (multiAcademy && allChk.checked) {
                 copyResultToast(unit, copyQuizToOtherAcademies(unit, weekId, max, halfChk.checked));
@@ -683,7 +788,9 @@ function manageWeeks() {
         .map((s) => s.trim())
         .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s))
         .sort();
+      const before = new Set(w.sessions || []);
       w.sessions = dates;
+      markDroppedForNewSessions(S.selAcademy, w.id, dates.filter((d) => !before.has(d)));
       markAcademy(S.selAcademy);
       toast("저장되었습니다.", "ok");
       renderEditor(); // 라벨 변경을 선택 목록에 반영
@@ -775,8 +882,9 @@ function renderStudentsTab(container) {
     if (!students.length) card.appendChild(el("p", { class: "empty", text: "학생이 없습니다." }));
     for (const st of students) {
       card.appendChild(
-        el("div", { class: `student-row ${st.active === false ? "inactive" : ""}` }, [
+        el("div", { class: `student-row ${st.active === false ? "inactive" : ""}${st.dropped ? " dropped" : ""}` }, [
           el("span", { class: "s-name", text: st.name }),
+          st.dropped ? el("span", { class: "drop-pill", text: "드랍" }) : null,
           el("span", { class: "code-pill", text: st.code }),
           el("span", { class: "s-actions" }, [
             el("button", {
@@ -785,6 +893,7 @@ function renderStudentsTab(container) {
               onclick: () => printCodeCards([{ name: st.name, code: st.code, academyName: a.name }], S.meta.site.title, S.roster.siteURL),
             }),
             el("button", { class: "btn btn-small", text: "코드 재발급", onclick: () => reissueCode(st) }),
+            el("button", { class: "btn btn-small", text: st.dropped ? "드랍 해제" : "드랍", onclick: () => toggleDropped(st) }),
             el("button", {
               class: "btn btn-small",
               text: st.active === false ? "활성화" : "비활성",
@@ -1577,6 +1686,7 @@ function homeworkCard(week, { title = "숙제 체크", checks = true } = {}) {
         onclick: () => {
           const n = week.homework.reduce((m, i) => Math.max(m, parseInt(i.id.slice(2)) || 0), 0) + 1;
           week.homework.push({ id: `hw${n}`, text: "" });
+          markDroppedForNewHomework(S.selAcademy, week.id, `hw${n}`);
           markAcademy(S.selAcademy);
           renderTab();
         },
