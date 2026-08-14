@@ -281,7 +281,7 @@ function renderRestore() {
 // ---------- 메인 UI ----------
 let badgeEl = null;
 let contentEl = null;
-let activeTab = "students";
+let activeTab = "weekly";
 
 function updateBadge() {
   if (!badgeEl) return;
@@ -307,6 +307,7 @@ function renderMain() {
   );
 
   const tabs = [
+    ["weekly", "주간 입력"],
     ["students", "학생 관리"],
     ["scores", "점수 입력"],
     ["homework", "숙제 체크"],
@@ -342,6 +343,7 @@ function renderMain() {
 function renderTab() {
   clear(contentEl);
   const render = {
+    weekly: renderWeeklyTab,
     students: renderStudentsTab,
     scores: renderScoresTab,
     homework: renderHomeworkTab,
@@ -816,11 +818,39 @@ function renderStudentsTab(container) {
           if (!name) return toast("이름을 입력해 주세요.", "error");
           const aEntry = academyEntry(aSel.value);
           const { rosterEntry, blob } = await createStudent(name, aEntry, S.meta.saltStudent);
+          // 중간 합류: 이미 있는 주차·퀴즈는 자동으로 '수강 전' 처리
+          // (출석 = 수강 전(N), 숙제 = 해당 없음(－), 퀴즈 = 미수강 — 통계·완료율·경고에서 제외)
+          // 이번 주부터 수업에 들어온다면 해당 칸만 각 탭에서 바꿔 주면 된다.
+          const ab = academyBlob(aEntry.fileId);
+          let marked = 0;
+          for (const w of ab?.weeks || []) {
+            const wd = {};
+            if ((w.sessions || []).length) {
+              wd.attendance = Object.fromEntries(w.sessions.map((d) => [d, "N"]));
+              marked++;
+            }
+            if ((w.homework || []).length) {
+              wd.homework = Object.fromEntries(w.homework.map((h) => [h.id, false]));
+              marked++;
+            }
+            if (Object.keys(wd).length) blob.weeks[w.id] = wd;
+          }
+          for (const q of ab?.quizzes || []) {
+            blob.quizzes = blob.quizzes || {};
+            blob.quizzesNoClass = blob.quizzesNoClass || {};
+            blob.quizzes[q.id] = null;
+            blob.quizzesNoClass[q.id] = true;
+            marked++;
+          }
           S.roster.students.push(rosterEntry);
           S.students.set(rosterEntry.fileId, blob);
           markStudent(rosterEntry.fileId);
           markRoster();
-          toast(`${name} 학생이 추가되었습니다. 코드: ${rosterEntry.code}`, "ok");
+          toast(
+            `${name} 학생이 추가되었습니다. 코드: ${rosterEntry.code}` +
+              (marked ? " · 기존 주차·퀴즈는 '수강 전'으로 자동 표시했습니다." : ""),
+            "ok"
+          );
           renderTab();
         },
       }),
@@ -1115,14 +1145,20 @@ async function rotateAcademyKey(oldFileId) {
 function renderScoresTab(container) {
   quizToolbar(container);
   const quiz = selectedQuiz();
-  const card = el("div", { class: "card" }, [el("h2", { text: "퀴즈 점수 입력" })]);
   if (!quiz) {
+    const card = el("div", { class: "card" }, [el("h2", { text: "퀴즈 점수 입력" })]);
     card.appendChild(
       el("p", { class: "empty", text: "'+ 새 퀴즈'로 단원 퀴즈를 먼저 만들어 주세요. (한 주차에 여러 단원 퀴즈를 만들 수 있습니다)" })
     );
     container.appendChild(card);
     return;
   }
+  container.appendChild(scoresCard(quiz));
+}
+
+// 퀴즈 점수 입력 카드 — 점수 입력 탭과 주간 입력 탭에서 공용
+function scoresCard(quiz, { title = "퀴즈 점수 입력" } = {}) {
+  const card = el("div", { class: "card" }, [el("h2", { text: title })]);
   card.appendChild(
     el("p", { class: "hint", text: `단원: ${quiz.unit} · 응시 주차: ${weekLabelOf(academyBlob().weeks, quiz.weekId) || "미정"} · 만점 ${quiz.max}점 (변경은 '퀴즈 관리')` })
   );
@@ -1180,8 +1216,9 @@ function renderScoresTab(container) {
     const sBlob = S.students.get(st.fileId);
     const q = sBlob?.quizzes;
     const cur = q?.[quiz.id];
-    const ns = isNoShow(q, quiz.id);
     const nc = !!sBlob?.quizzesNoClass?.[quiz.id];
+    // 점수 없이 미수강 표시만 있으면(신규 학생 자동 처리 등) 미응시가 아니라 '수강 전'으로 취급
+    const ns = isNoShow(q, quiz.id) && !nc;
     const input = el("input", {
       type: "number",
       class: "cell-input",
@@ -1314,7 +1351,14 @@ function renderScoresTab(container) {
               changed++;
             }
           } else if (raw === "") {
-            if (had) {
+            if (noClass.get(st.fileId)) {
+              // 수강 전 — 점수 없음 (신규 학생 자동 처리와 동일 상태: null + 미수강 플래그)
+              if (!had || blob.quizzes[quiz.id] !== null) {
+                blob.quizzes[quiz.id] = null;
+                markStudent(st.fileId);
+                changed++;
+              }
+            } else if (had) {
               delete blob.quizzes[quiz.id];
               markStudent(st.fileId);
               changed++;
@@ -1327,8 +1371,8 @@ function renderScoresTab(container) {
               changed++;
             }
           }
-          // 미수강 플래그 — 점수가 있을 때만 유지 (미응시·빈칸이면 자동 해제)
-          const wantFlag = !noShow.get(st.fileId) && raw !== "" && !!noClass.get(st.fileId);
+          // 미수강 플래그 — 미응시가 아니면 점수 유무와 관계없이 유지
+          const wantFlag = !noShow.get(st.fileId) && !!noClass.get(st.fileId);
           const flags = blob.quizzesNoClass || {};
           if (wantFlag !== !!flags[quiz.id]) {
             if (wantFlag) (blob.quizzesNoClass = flags)[quiz.id] = true;
@@ -1345,7 +1389,7 @@ function renderScoresTab(container) {
       },
     })
   );
-  container.appendChild(card);
+  return card;
 }
 
 // 퀴즈별 전체 평균/응시 인원 재계산 (quizzes[].stats)
@@ -1385,16 +1429,102 @@ function recomputeStats() {
   }
 }
 
+// ---------- ②½ 주간 입력 (기본 탭) ----------
+// 한 주 수업의 실제 흐름 순서대로 한 페이지에서 입력한다:
+// ① 지난 주 숙제 체크 → ② 지난 주 퀴즈 점수 → ③ 이번 주 출석 → ④ 진도 → ⑤ 숙제 입력 → ⑥ 퀴즈 등록
+function renderWeeklyTab(container) {
+  toolbar(container);
+  const week = selectedWeek();
+  if (!week) {
+    const card = el("div", { class: "card" }, [el("h2", { text: "주간 입력" })]);
+    card.appendChild(el("p", { class: "empty", text: "위에서 학원을 고른 뒤 '주차 관리'에서 이번 주차를 만들어 주세요." }));
+    container.appendChild(card);
+    return;
+  }
+  const weeks = sortWeeks(academyBlob().weeks);
+  const idx = weeks.findIndex((w) => w.id === week.id);
+  const prev = idx > 0 ? weeks[idx - 1] : null;
+  const emptyCard = (title, msg) => {
+    const c = el("div", { class: "card" }, [el("h2", { text: title })]);
+    c.appendChild(el("p", { class: "empty", text: msg }));
+    return c;
+  };
+  container.appendChild(
+    el("p", {
+      class: "hint",
+      style: "margin:4px 2px 10px",
+      text: `${week.label} 수업 기준 한 페이지 입력입니다 — 지난 주(${prev ? prev.label : "없음"}) 숙제·퀴즈 확인부터 이번 주 기록까지 순서대로 진행하세요.`,
+    })
+  );
+
+  // ① 지난 주 숙제 체크
+  if (prev) container.appendChild(homeworkCard(prev, { title: `① 지난 주 숙제 체크 — ${prev.label}` }));
+  else container.appendChild(emptyCard("① 지난 주 숙제 체크", "이전 주차가 없습니다 (첫 주차)."));
+
+  // ② 지난 주 퀴즈 점수 입력
+  const prevQuizzes = prev ? (academyBlob().quizzes || []).filter((q) => q.weekId === prev.id) : [];
+  if (prevQuizzes.length) {
+    for (const q of prevQuizzes) {
+      container.appendChild(scoresCard(q, { title: `② 지난 주 퀴즈 점수 — ${q.unit}` }));
+    }
+  } else {
+    container.appendChild(
+      emptyCard("② 지난 주 퀴즈 점수 입력", prev ? "지난 주차에 등록된 단원 퀴즈가 없습니다." : "이전 주차가 없습니다 (첫 주차).")
+    );
+  }
+
+  // ③ 이번 주 출석 체크
+  container.appendChild(attendanceCard(week, { title: `③ 이번 주 출석 체크 — ${week.label}` }));
+
+  // ④ 이번 주 진도
+  container.appendChild(progressCard(week, { title: "④ 이번 주 진도" }));
+
+  // ⑤ 이번 주 숙제 입력 (체크는 다음 주 ①에서)
+  const hwCard = homeworkCard(week, { title: `⑤ 이번 주 숙제 입력 — ${week.label}`, checks: false });
+  hwCard.appendChild(
+    el("p", { class: "hint", text: "학생별 체크는 다음 주 '주간 입력'의 ①에서 하게 됩니다. (또는 '숙제 체크' 탭)" })
+  );
+  container.appendChild(hwCard);
+
+  // ⑥ 이번 주 퀴즈(범위) 등록
+  const qCard = el("div", { class: "card" }, [el("h2", { text: `⑥ 이번 주 퀴즈 등록 — ${week.label}` })]);
+  qCard.appendChild(
+    el("p", { class: "hint", text: "이번 주에 볼 단원 퀴즈를 등록해 두면, 다음 주 ②에서 점수를 입력하게 됩니다." })
+  );
+  const thisQuizzes = (academyBlob().quizzes || []).filter((q) => q.weekId === week.id);
+  if (!thisQuizzes.length) qCard.appendChild(el("p", { class: "empty", text: "이번 주차에 등록된 퀴즈가 없습니다." }));
+  for (const q of thisQuizzes) {
+    qCard.appendChild(
+      el("div", { class: "student-row" }, [
+        el("span", { class: "s-name", text: q.unit }),
+        el("span", { class: "hint", text: `만점 ${q.max}점${q.half ? " · 2배 출제(절반 표시)" : ""}` }),
+        el("span", { class: "s-actions" }, [
+          el("button", { class: "btn btn-small", text: "수정", onclick: () => editQuiz(q) }),
+        ]),
+      ])
+    );
+  }
+  qCard.appendChild(el("button", { class: "btn btn-primary btn-small", text: "+ 새 퀴즈", onclick: () => editQuiz(null) }));
+  container.appendChild(qCard);
+}
+
 // ---------- ③ 숙제 체크 ----------
 function renderHomeworkTab(container) {
   toolbar(container);
   const week = selectedWeek();
-  const card = el("div", { class: "card" }, [el("h2", { text: "숙제 체크" })]);
   if (!week) {
+    const card = el("div", { class: "card" }, [el("h2", { text: "숙제 체크" })]);
     card.appendChild(el("p", { class: "empty", text: "'주차 관리'에서 먼저 주차를 만들어 주세요." }));
     container.appendChild(card);
     return;
   }
+  container.appendChild(homeworkCard(week));
+}
+
+// 숙제 카드 — 숙제 체크 탭과 주간 입력 탭에서 공용
+// checks=false면 항목 입력만 표시 (이번 주 숙제 '입력' 용도 — 체크는 다음 주에)
+function homeworkCard(week, { title = "숙제 체크", checks = true } = {}) {
+  const card = el("div", { class: "card" }, [el("h2", { text: title })]);
   week.homework = week.homework || [];
 
   // 숙제 항목 편집
@@ -1457,7 +1587,7 @@ function renderHomeworkTab(container) {
   card.appendChild(itemsBox);
 
   // 체크 그리드 — 이름 옆에 이 주차 출석을 함께 보여줘 결석·수강 전 학생을 구분하기 쉽게 한다
-  if (week.homework.length) {
+  if (checks && week.homework.length) {
     const students = activeStudentsOf(S.selAcademy);
     const tbl = el("table", { class: "grid", style: "margin-top:12px" });
     const header = el("tr", {}, [
@@ -1552,25 +1682,30 @@ function renderHomeworkTab(container) {
       onclick: () => copyText(homeworkShareText(academyEntry().name, week)),
     })
   );
-  container.appendChild(card);
+  return card;
 }
 
 // ---------- ④ 출석 ----------
 function renderAttendanceTab(container) {
   toolbar(container);
   const week = selectedWeek();
-  const card = el("div", { class: "card" }, [el("h2", { text: "출석 체크" })]);
   if (!week) {
+    const card = el("div", { class: "card" }, [el("h2", { text: "출석 체크" })]);
     card.appendChild(el("p", { class: "empty", text: "'주차 관리'에서 먼저 주차를 만들어 주세요." }));
     container.appendChild(card);
     return;
   }
+  container.appendChild(attendanceCard(week));
+}
+
+// 출석 체크 카드 — 출석 탭과 주간 입력 탭에서 공용
+function attendanceCard(week, { title = "출석 체크" } = {}) {
+  const card = el("div", { class: "card" }, [el("h2", { text: title })]);
   if (!(week.sessions || []).length) {
     card.appendChild(
       el("p", { class: "empty", text: "'주차 관리'에서 이 주차의 수업일을 먼저 입력해 주세요." })
     );
-    container.appendChild(card);
-    return;
+    return card;
   }
   card.appendChild(
     el("p", {
@@ -1660,7 +1795,7 @@ function renderAttendanceTab(container) {
     tbl.appendChild(row);
   }
   card.appendChild(el("div", { class: "table-wrap" }, [tbl]));
-  container.appendChild(card);
+  return card;
 }
 
 // ---------- ⑤ 리포트 (단원별) ----------
@@ -2071,12 +2206,18 @@ function renderMaterialsTab(container) {
 function renderProgressTab(container) {
   toolbar(container);
   const week = selectedWeek();
-  const card = el("div", { class: "card" }, [el("h2", { text: "수업 진도" })]);
   if (!week) {
+    const card = el("div", { class: "card" }, [el("h2", { text: "수업 진도" })]);
     card.appendChild(el("p", { class: "empty", text: "'주차 관리'에서 먼저 주차를 만들어 주세요." }));
     container.appendChild(card);
     return;
   }
+  container.appendChild(progressCard(week));
+}
+
+// 진도 입력 카드 — 진도 탭과 주간 입력 탭에서 공용
+function progressCard(week, { title = "수업 진도" } = {}) {
+  const card = el("div", { class: "card" }, [el("h2", { text: title })]);
   const ta = el("textarea", { rows: "4", placeholder: "예) 화학: 몰 개념 ~ 몰 농도 / 물리: 등가속도 운동" });
   ta.value = week.progress || "";
   ta.addEventListener("input", () => {
@@ -2085,7 +2226,7 @@ function renderProgressTab(container) {
   });
   card.appendChild(ta);
   card.appendChild(el("p", { class: "hint", text: "학생 포털의 '출석·진도' 탭에 표시됩니다." }));
-  container.appendChild(card);
+  return card;
 }
 
 // ---------- ⑨ 원장님 보고서 ----------

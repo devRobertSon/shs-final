@@ -220,10 +220,10 @@ export function buildDirectorReport({
         const scores = students
           .map((s) => (s.blob.quizzesNoClass?.[q.id] ? null : dispScore(q, s.blob.quizzes?.[q.id])))
           .filter((v) => v != null);
-        const noshow = students.filter((s) => isNoShow(s.blob.quizzes, q.id)).map((s) => s.name);
-        const noclass = students
-          .filter((s) => s.blob.quizzes?.[q.id] != null && s.blob.quizzesNoClass?.[q.id])
+        const noshow = students
+          .filter((s) => isNoShow(s.blob.quizzes, q.id) && !s.blob.quizzesNoClass?.[q.id])
           .map((s) => s.name);
+        const noclass = students.filter((s) => s.blob.quizzesNoClass?.[q.id]).map((s) => s.name);
         const missing = students
           .filter((s) => s.blob.quizzes?.[q.id] == null && !isNoShow(s.blob.quizzes, q.id))
           .map((s) => s.name);
@@ -242,7 +242,7 @@ export function buildDirectorReport({
         if (!pq.scores.length) warn(`「${pq.q.unit}」 퀴즈 점수가 하나도 입력되지 않았습니다.`);
         else if (pq.missing.length) warn(`「${pq.q.unit}」 점수 미입력: ${pq.missing.join(", ")}`);
         if (pq.noshow.length) info(`「${pq.q.unit}」 미응시(결석 등): ${pq.noshow.join(", ")} — 평균에서 제외됩니다.`);
-        if (pq.noclass.length) info(`「${pq.q.unit}」 미수강 응시: ${pq.noclass.join(", ")} — 점수는 기록되지만 평균에서 제외됩니다.`);
+        if (pq.noclass.length) info(`「${pq.q.unit}」 미수강(수강 전 포함): ${pq.noclass.join(", ")} — 평균·통계에서 제외됩니다.`);
       }
 
       // 단일 퀴즈면 통계 타일(학원 vs 전체), 복수면 퀴즈별 요약 줄
@@ -285,7 +285,7 @@ export function buildDirectorReport({
                 ]);
               return el("td", { class: "rd-score" }, [
                 isNoShow(s.blob.quizzes, q.id)
-                  ? el("span", { class: "rd-noshow", text: "미응시" })
+                  ? el("span", { class: "rd-noshow", text: s.blob.quizzesNoClass?.[q.id] ? "미수강" : "미응시" })
                   : el("span", { class: "rd-dash", text: "–" }),
               ]);
             }),
