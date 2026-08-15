@@ -2,12 +2,13 @@
 // 보고서는 브라우저 메모리에서만 만들어지고 인쇄(PDF 저장)로만 나간다.
 // 저장소에는 절대 커밋되지 않는다 (실명·점수 포함).
 import { el } from "./ui.js";
-import { sortWeeks, sortQuizzes, ATTENDANCE, ATTENDANCE_ORDER, toYMD, isNoShow, isNA, triState, dispScore, dispMax } from "./store.js";
+import { sortWeeks, sortQuizzes, ATTENDANCE, ATTENDANCE_ORDER, toYMD, isNoShow, isNA, triState, mathDatesForWeek, dispScore, dispMax } from "./store.js";
 
 // 입력:
 //   academyName, weeks(학원 blob), quizzes(학원 blob의 단원 퀴즈 목록),
 //   weekId(보고 대상 주차 W), students: [{name, blob}] (활성 학생),
-//   notices(학원 blob), teacherName, dirty(발행 안 된 변경 존재 여부)
+//   notices(학원 blob), mathDates(학원 blob의 수학 수업 날짜 목록),
+//   teacherName, dirty(발행 안 된 변경 존재 여부)
 // 반환: { checks: [{level:'ok'|'warn'|'info', text}], doc: HTMLElement }
 export function buildDirectorReport({
   academyName,
@@ -16,6 +17,7 @@ export function buildDirectorReport({
   weekId,
   students,
   notices,
+  mathDates,
   teacherName,
   dirty,
 }) {
@@ -117,14 +119,17 @@ export function buildDirectorReport({
   }
   doc.appendChild(section("출석 현황", attChildren));
 
-  // ---------- ③ 지난 주 숙제 수행 (P) — 과학 항목별 + 수학(주차당 1칸, 체크한 주차만) ----------
+  // ---------- ③ 지난 주 숙제 수행 (P) — 과학 항목별 + 수학(날짜별) ----------
+  // 수학 숙제는 '날짜 d 바로 다음 과학 수업 주차의 보고서'에 실린다 —
+  // 이 보고서(W)에는 지난 과학 수업(P) 이후 ~ 이번 과학 수업(W) 전의 수학 수업 날짜들이 들어간다.
   if (!P) {
     info("이전 주차가 없어 숙제·퀴즈 섹션은 표시되지 않습니다 (첫 주차).");
   } else {
     const hwChildren = [];
     const items = P.homework || [];
-    const mathOn = !!P.mathHomework; // 이 주차에 수학 숙제 체크를 사용했는지
-    const mathStateOf = (s) => triState(s.blob.weeks?.[P.id] || {}, "mathHomework");
+    const mDates = mathDatesForWeek(weeks, mathDates, W.id);
+    const fmtD = (d) => d.slice(5).replace("-", "/");
+    const mathStateOf = (s, d) => triState(s.blob.mathHomework, d);
     const mathChip = (st) =>
       st === "done"
         ? el("span", { class: "rd-check", text: "✓" })
@@ -133,21 +138,19 @@ export function buildDirectorReport({
           : st === "na"
             ? el("span", { class: "rd-na", text: "－" })
             : el("span", { class: "rd-dash", text: "–" });
-    const mathNote = () => {
+    const mathNote = (d) => {
       let done = 0;
       let holds = 0;
       let nas = 0;
       for (const s of students) {
-        const st = mathStateOf(s);
+        const st = mathStateOf(s, d);
         if (st === "done") done++;
         else if (st === "hold") holds++;
         else if (st === "na") nas++;
       }
       const denom = students.length - holds - nas;
-      // 수학 수업일이 적혀 있으면 함께 표기 (수학 수업은 과학 수업일과 다를 수 있음)
-      const dateTag = P.mathDate ? `(${P.mathDate.slice(5).replace("-", "/")})` : "";
       return (
-        `수학 숙제${dateTag} · 했음 ${done}명 / ${denom}명` +
+        `수학 숙제(${fmtD(d)}) · 했음 ${done}명 / ${denom}명` +
         (holds ? ` · ◌ 확인 전 ${holds}명` : "") +
         (nas ? ` · － 해당 없음 ${nas}명` : "")
       );
@@ -155,19 +158,24 @@ export function buildDirectorReport({
     if (!items.length) {
       warn(`지난 주(${P.label})에 등록된 숙제 항목이 없습니다.`);
       hwChildren.push(el("p", { class: "rd-empty", text: "(과학 숙제 항목 없음)" }));
-      if (mathOn) {
+      if (mDates.length) {
         const tbl = el("table", { class: "rd-table" });
-        tbl.appendChild(el("tr", {}, [el("th", { text: "이름" }), el("th", { text: "수학 숙제" })]));
+        tbl.appendChild(
+          el("tr", {}, [
+            el("th", { text: "이름" }),
+            ...mDates.map((d) => el("th", { text: `수학 ${fmtD(d)}` })),
+          ])
+        );
         for (const s of students) {
           tbl.appendChild(
             el("tr", {}, [
               el("td", { class: "rd-name", text: s.name }),
-              el("td", {}, [mathChip(mathStateOf(s))]),
+              ...mDates.map((d) => el("td", {}, [mathChip(mathStateOf(s, d))])),
             ])
           );
         }
         hwChildren.push(el("div", { class: "rd-table-wrap" }, [tbl]));
-        hwChildren.push(el("p", { class: "rd-note", text: mathNote() }));
+        for (const d of mDates) hwChildren.push(el("p", { class: "rd-note", text: mathNote(d) }));
       }
     } else {
       hwChildren.push(
@@ -179,7 +187,7 @@ export function buildDirectorReport({
           el("th", { text: "이름" }),
           ...items.map((_, i) => el("th", { text: `${i + 1}번` })),
           el("th", { text: "완료율" }),
-          mathOn ? el("th", { text: "수학" }) : null,
+          ...mDates.map((d) => el("th", { text: `수학 ${fmtD(d)}` })),
         ])
       );
       let doneAll = 0;
@@ -223,7 +231,7 @@ export function buildDirectorReport({
                   ]),
               rate == null ? null : el("span", { text: `${rate}%` }),
             ]),
-            mathOn ? el("td", {}, [mathChip(mathStateOf(s))]) : null,
+            ...mDates.map((d) => el("td", {}, [mathChip(mathStateOf(s, d))])),
           ])
         );
       }
@@ -233,12 +241,12 @@ export function buildDirectorReport({
         el("p", {
           class: "rd-note",
           text:
-            `${mathOn ? "과학 숙제 " : ""}전체 완료율 · ${totalRate}%` +
+            `${mDates.length ? "과학 숙제 " : ""}전체 완료율 · ${totalRate}%` +
             (holdAll ? ` (◌ 확인 전 ${holdAll}건은 결석 등으로 제외)` : "") +
             (naAll ? ` (－ 해당 없음 ${naAll}건은 수강 전 등으로 제외)` : ""),
         })
       );
-      if (mathOn) hwChildren.push(el("p", { class: "rd-note", text: mathNote() }));
+      for (const d of mDates) hwChildren.push(el("p", { class: "rd-note", text: mathNote(d) }));
       if (holdAll) {
         info(`지난 주 숙제 '확인 전(◌)' — ${holdNames.join(", ")}: 다음 수업에서 확인 후 체크하세요.`);
       }
