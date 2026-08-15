@@ -306,17 +306,15 @@ function renderMain() {
     ])
   );
 
+  // 점수 입력·출석·진도는 별도 탭 없이 '회차별 입력'에서 처리한다 (③④⑤)
   const tabs = [
-    ["weekly", "주간 입력"],
+    ["weekly", "회차별 입력"],
     ["students", "학생 관리"],
-    ["scores", "점수 입력"],
     ["homework", "과학 숙제"],
     ["mathhw", "수학 숙제"],
-    ["attendance", "출석"],
     ["reports", "리포트"],
     ["notices", "공지"],
     ["materials", "자료실"],
-    ["progress", "진도"],
     ["director", "보고서"],
     ["publish", "발행"],
   ];
@@ -346,14 +344,11 @@ function renderTab() {
   const render = {
     weekly: renderWeeklyTab,
     students: renderStudentsTab,
-    scores: renderScoresTab,
     homework: renderHomeworkTab,
     mathhw: renderMathHomeworkTab,
-    attendance: renderAttendanceTab,
     reports: renderReportsTab,
     notices: renderNoticesTab,
     materials: renderMaterialsTab,
-    progress: renderProgressTab,
     director: renderDirectorTab,
     publish: renderPublishTab,
   }[activeTab];
@@ -1260,22 +1255,7 @@ async function rotateAcademyKey(oldFileId) {
   markRoster();
 }
 
-// ---------- ② 점수 입력 (단원별 퀴즈) ----------
-function renderScoresTab(container) {
-  quizToolbar(container);
-  const quiz = selectedQuiz();
-  if (!quiz) {
-    const card = el("div", { class: "card" }, [el("h2", { text: "퀴즈 점수 입력" })]);
-    card.appendChild(
-      el("p", { class: "empty", text: "'+ 새 퀴즈'로 단원 퀴즈를 먼저 만들어 주세요. (한 주차에 여러 단원 퀴즈를 만들 수 있습니다)" })
-    );
-    container.appendChild(card);
-    return;
-  }
-  container.appendChild(scoresCard(quiz));
-}
-
-// 퀴즈 점수 입력 카드 — 점수 입력 탭과 주간 입력 탭에서 공용
+// ---------- 퀴즈 점수 입력 카드 — 회차별 입력 탭 ③에서 사용 ----------
 function scoresCard(quiz, { title = "퀴즈 점수 입력" } = {}) {
   const card = el("div", { class: "card" }, [el("h2", { text: title })]);
   card.appendChild(
@@ -1548,14 +1528,14 @@ function recomputeStats() {
   }
 }
 
-// ---------- ②½ 주간 입력 (기본 탭) ----------
+// ---------- ②½ 회차별 입력 (기본 탭) ----------
 // 한 주 수업의 실제 흐름 순서대로 한 페이지에서 입력한다:
 // ① 지난 주 숙제 체크 → ② 지난 주 퀴즈 점수 → ③ 이번 주 출석 → ④ 진도 → ⑤ 숙제 입력 → ⑥ 퀴즈 등록
 function renderWeeklyTab(container) {
   toolbar(container);
   const week = selectedWeek();
   if (!week) {
-    const card = el("div", { class: "card" }, [el("h2", { text: "주간 입력" })]);
+    const card = el("div", { class: "card" }, [el("h2", { text: "회차별 입력" })]);
     card.appendChild(el("p", { class: "empty", text: "위에서 학원을 고른 뒤 '주차 관리'에서 이번 주차를 만들어 주세요." }));
     container.appendChild(card);
     return;
@@ -1605,7 +1585,7 @@ function renderWeeklyTab(container) {
   // ⑥ 이번 주 과학 숙제 입력 (체크는 다음 주 ①에서)
   const hwCard = homeworkCard(week, { title: `⑥ 이번 주 과학 숙제 입력 — ${week.label}`, checks: false });
   hwCard.appendChild(
-    el("p", { class: "hint", text: "학생별 체크는 다음 주 '주간 입력'의 ①에서 하게 됩니다. (또는 '과학 숙제' 탭)" })
+    el("p", { class: "hint", text: "학생별 체크는 다음 주 '회차별 입력'의 ①에서 하게 됩니다. (또는 '과학 숙제' 탭)" })
   );
   container.appendChild(hwCard);
 
@@ -1657,7 +1637,7 @@ function renderMathHomeworkTab(container) {
   container.appendChild(mathHomeworkCard(week));
 }
 
-// 수학 숙제 카드 — 수학 숙제 탭과 주간 입력 탭에서 공용.
+// 수학 숙제 카드 — 수학 숙제 탭과 회차별 입력 탭에서 공용.
 // 항목 목록 없이 주차마다 '했는지'만 학생별 1칸으로 체크한다.
 // 처음 체크하는 순간 week.mathHomework(사용 표시)가 켜지고, 켜진 주차만
 // 학생·학부모/선생님 화면에 나타난다 (도입 전 주차가 '안 함'으로 보이는 것 방지).
@@ -1765,7 +1745,7 @@ function mathHomeworkCard(week, { title = "수학 숙제 체크" } = {}) {
   return card;
 }
 
-// 숙제 카드 — 숙제 체크 탭과 주간 입력 탭에서 공용
+// 숙제 카드 — 숙제 체크 탭과 회차별 입력 탭에서 공용
 // checks=false면 항목 입력만 표시 (이번 주 숙제 '입력' 용도 — 체크는 다음 주에)
 function homeworkCard(week, { title = "과학 숙제 체크", checks = true } = {}) {
   const card = el("div", { class: "card" }, [el("h2", { text: title })]);
@@ -1931,19 +1911,7 @@ function homeworkCard(week, { title = "과학 숙제 체크", checks = true } = 
 }
 
 // ---------- ④ 출석 ----------
-function renderAttendanceTab(container) {
-  toolbar(container);
-  const week = selectedWeek();
-  if (!week) {
-    const card = el("div", { class: "card" }, [el("h2", { text: "출석 체크" })]);
-    card.appendChild(el("p", { class: "empty", text: "'주차 관리'에서 먼저 주차를 만들어 주세요." }));
-    container.appendChild(card);
-    return;
-  }
-  container.appendChild(attendanceCard(week));
-}
-
-// 출석 체크 카드 — 출석 탭과 주간 입력 탭에서 공용
+// 출석 체크 카드 — 회차별 입력 탭 ④에서 사용
 function attendanceCard(week, { title = "출석 체크" } = {}) {
   const card = el("div", { class: "card" }, [el("h2", { text: title })]);
   if (!(week.sessions || []).length) {
@@ -2448,19 +2416,7 @@ function renderMaterialsTab(container) {
 }
 
 // ---------- ⑧ 진도 ----------
-function renderProgressTab(container) {
-  toolbar(container);
-  const week = selectedWeek();
-  if (!week) {
-    const card = el("div", { class: "card" }, [el("h2", { text: "수업 진도" })]);
-    card.appendChild(el("p", { class: "empty", text: "'주차 관리'에서 먼저 주차를 만들어 주세요." }));
-    container.appendChild(card);
-    return;
-  }
-  container.appendChild(progressCard(week));
-}
-
-// 진도 입력 카드 — 진도 탭과 주간 입력 탭에서 공용
+// 진도 입력 카드 — 회차별 입력 탭 ⑤에서 사용
 function progressCard(week, { title = "수업 진도" } = {}) {
   const card = el("div", { class: "card" }, [el("h2", { text: title })]);
   const ta = el("textarea", { rows: "4", placeholder: "예) 화학: 몰 개념 ~ 몰 농도 / 물리: 등가속도 운동" });
