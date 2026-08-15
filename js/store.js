@@ -161,17 +161,25 @@ export function isNA(map, id) {
 }
 
 // 체크 상태 공용 판별 — true=✓완료 / null=◌확인 전 / false=－해당 없음 / 키 없음=안 함.
-// 과학 숙제 항목 맵(homework)과 주차별 수학 숙제 칸(weeks[wid].mathHomework)이 같은 규칙을 쓴다.
+// 과학 숙제 항목 맵(homework)과 수학 숙제 날짜 맵(student.mathHomework)이 같은 규칙을 쓴다.
 export function triState(map, id) {
   if (!map || !(id in map)) return "none";
   return map[id] === true ? "done" : map[id] === null ? "hold" : "na";
 }
 
-// 수학 숙제: 항목 목록 없이 주차당 1칸 — 학생 blob weeks[wid].mathHomework 에 저장.
-// 학원 blob의 week.mathHomework === true 는 '이 주차에 수학 숙제 체크를 사용함' 표시로,
-// 켜진 주차만 학생·학부모/선생님 화면에 나타난다 (도입 전 주차가 '안 함'으로 보이는 것 방지).
-// week.mathDate ("YYYY-MM-DD", 선택)는 그 주 수학 수업 날짜 — 수학 수업은 과학 수업일과
-// 다를 수 있어, 적혀 있으면 학생·선생님·보고서 화면이 이 날짜로 표시한다 (없으면 주차 이름).
+// 수학 숙제: 수학 수업 '날짜'마다 학생별 1칸 — 수학 수업일은 과학 수업일과 다르고
+// 한 주에 여러 번일 수 있다.
+// - 학원 blob: mathDates = ["YYYY-MM-DD", ...] (선생님이 추가한 수학 수업 날짜 목록)
+// - 학생 blob: mathHomework = { "YYYY-MM-DD": true|null|false } (키 없음 = 안 함)
+// 보고서 귀속 규칙: 날짜 d의 체크는 'd 바로 다음에 과학 수업이 있는 주차'의 보고서에 실린다.
+export function mathDatesForWeek(weeks, mathDates, weekId) {
+  const sorted = sortWeeks(weeks).filter((w) => (w.sessions || []).length);
+  const idx = sorted.findIndex((w) => w.id === weekId);
+  if (idx < 0) return [];
+  const start = sorted[idx].sessions[0];
+  const prevStart = idx > 0 ? sorted[idx - 1].sessions[0] : null;
+  return [...(mathDates || [])].sort().filter((d) => d < start && (prevStart == null || d >= prevStart));
+}
 
 // 접속 통계 핑 URL — 저장소 릴리스(visit-counter)의 작은 첨부 파일 주소.
 // 이 파일을 받아가면 GitHub이 다운로드 횟수를 +1 세고, 관리 페이지가 그 수를 읽는다.
