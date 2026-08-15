@@ -144,8 +144,10 @@ export function buildDirectorReport({
         else if (st === "na") nas++;
       }
       const denom = students.length - holds - nas;
+      // 수학 수업일이 적혀 있으면 함께 표기 (수학 수업은 과학 수업일과 다를 수 있음)
+      const dateTag = P.mathDate ? `(${P.mathDate.slice(5).replace("-", "/")})` : "";
       return (
-        `수학 숙제 · 했음 ${done}명 / ${denom}명` +
+        `수학 숙제${dateTag} · 했음 ${done}명 / ${denom}명` +
         (holds ? ` · ◌ 확인 전 ${holds}명` : "") +
         (nas ? ` · － 해당 없음 ${nas}명` : "")
       );

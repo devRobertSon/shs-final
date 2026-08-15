@@ -1668,6 +1668,20 @@ function mathHomeworkCard(week, { title = "수학 숙제 체크" } = {}) {
     card.appendChild(el("p", { class: "empty", text: "학생이 없습니다." }));
     return card;
   }
+  // 수학 수업일 (선택) — 수학 수업은 과학 수업일과 다른 날일 수 있어 따로 적는다.
+  // 적으면 학생·학부모 화면과 보고서에 이 날짜로 표시되고, 비우면 주차 이름으로 표시된다.
+  const dateIn = el("input", { type: "date", value: week.mathDate || "", "aria-label": "수학 수업일" });
+  dateIn.addEventListener("change", () => {
+    if (dateIn.value) week.mathDate = dateIn.value;
+    else delete week.mathDate;
+    markAcademy(S.selAcademy);
+  });
+  card.appendChild(
+    el("label", { class: "field", style: "max-width:240px" }, [
+      el("span", { text: "수학 수업일 (선택 — 적으면 학생 화면에 이 날짜로 표시)" }),
+      dateIn,
+    ])
+  );
   const markUsed = () => {
     if (!week.mathHomework) {
       week.mathHomework = true;

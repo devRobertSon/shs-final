@@ -380,8 +380,9 @@ function renderMathHomework(container, weeks) {
     const st = triState(weekData(week.id), "mathHomework");
     if (st === "hold") anyHold = true;
     if (st === "na") anyNA = true;
-    const ss = week.sessions || [];
-    const label = ss.length ? `${fmtDateK(ss[0])} 수학 숙제` : `${week.label} 수학 숙제`;
+    // 수학 수업일(mathDate)이 있으면 그 날짜로, 없으면 주차 이름으로 표시
+    // (과학 수업일과 수학 수업일이 달라 과학 수업 날짜를 쓰면 혼동을 준다)
+    const label = week.mathDate ? `${fmtDateK(week.mathDate)} 수학 숙제` : `${week.label} 수학 숙제`;
     ul.appendChild(
       el("li", { class: st === "done" ? "hw-done" : "" }, [
         el("span", {
@@ -1020,12 +1021,13 @@ function renderTeacherMathHomework(container, weeks) {
     byWeek.set(w.id, m);
   }
   const stOf = (r) => (r && "math" in r ? (r.math === true ? "done" : r.math === null ? "hold" : "na") : "none");
-  const shortWeek = (w) => shortLabel(w.label) || w.id;
+  // 열 제목: 수학 수업일이 적혀 있으면 그 날짜(예: 8/19), 없으면 주차 이름
+  const mhead = (w) => (w.mathDate ? w.mathDate.slice(5).replace("-", "/") : shortLabel(w.label) || w.id);
   const tbl = el("table", { class: "grid" });
   tbl.appendChild(
     el("tr", {}, [
       el("th", { class: "name-cell", text: "이름" }),
-      ...mathWeeks.map((w) => el("th", { text: shortWeek(w) })),
+      ...mathWeeks.map((w) => el("th", { text: mhead(w) })),
     ])
   );
   let anyHold = false;

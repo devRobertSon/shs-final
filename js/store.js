@@ -170,6 +170,8 @@ export function triState(map, id) {
 // 수학 숙제: 항목 목록 없이 주차당 1칸 — 학생 blob weeks[wid].mathHomework 에 저장.
 // 학원 blob의 week.mathHomework === true 는 '이 주차에 수학 숙제 체크를 사용함' 표시로,
 // 켜진 주차만 학생·학부모/선생님 화면에 나타난다 (도입 전 주차가 '안 함'으로 보이는 것 방지).
+// week.mathDate ("YYYY-MM-DD", 선택)는 그 주 수학 수업 날짜 — 수학 수업은 과학 수업일과
+// 다를 수 있어, 적혀 있으면 학생·선생님·보고서 화면이 이 날짜로 표시한다 (없으면 주차 이름).
 
 // 접속 통계 핑 URL — 저장소 릴리스(visit-counter)의 작은 첨부 파일 주소.
 // 이 파일을 받아가면 GitHub이 다운로드 횟수를 +1 세고, 관리 페이지가 그 수를 읽는다.
