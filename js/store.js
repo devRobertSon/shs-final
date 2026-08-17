@@ -183,13 +183,20 @@ export function mathDatesForWeek(weeks, mathDates, weekId) {
 
 // 접속 통계 핑 URL — 저장소 릴리스(visit-counter)의 작은 첨부 파일 주소.
 // 이 파일을 받아가면 GitHub이 다운로드 횟수를 +1 세고, 관리 페이지가 그 수를 읽는다.
-// GitHub Pages(*.github.io)에서만 주소를 만들 수 있고 그 외(localhost 등)는 null.
-export function visitPingURL(kind, loc = location) {
+// *.github.io 주소면 호스트명에서 저장소를 알아내고, 커스텀 도메인이면 발행 시
+// meta.site.repo("owner/name")에 기록된 저장소 경로를 쓴다. 둘 다 없으면(localhost 등) null.
+export function visitPingURL(kind, loc = location, repoFull = null) {
   const m = String(loc.hostname || "").match(/^([^.]+)\.github\.io$/i);
-  if (!m) return null;
-  const seg = String(loc.pathname || "").split("/").filter(Boolean);
-  const repo = seg.length && !seg[0].includes(".") ? seg[0] : `${m[1]}.github.io`;
-  return `https://github.com/${m[1]}/${repo}/releases/download/visit-counter/visit-${kind}.bin`;
+  if (m) {
+    const seg = String(loc.pathname || "").split("/").filter(Boolean);
+    const repo = seg.length && !seg[0].includes(".") ? seg[0] : `${m[1]}.github.io`;
+    return `https://github.com/${m[1]}/${repo}/releases/download/visit-counter/visit-${kind}.bin`;
+  }
+  // https로 서비스되는 커스텀 도메인만 — localhost 개발·QA에서는 집계하지 않는다
+  if (repoFull && loc.protocol === "https:" && /^[\w.-]+\/[\w.-]+$/.test(repoFull)) {
+    return `https://github.com/${repoFull}/releases/download/visit-counter/visit-${kind}.bin`;
+  }
+  return null;
 }
 
 // 2배 출제 퀴즈(quiz.half): 문제를 2배로 내서 만점이 2배(예: 14점 단원을 28점)로 된 경우.
