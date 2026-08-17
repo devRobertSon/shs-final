@@ -103,7 +103,23 @@ export function toYMD(d) {
   return `${y}-${m}-${day}`;
 }
 
-// 날짜 → ISO 주차 id ("2026-W27") — 새 주차 기본값 제안용
+// "2026-W33" → "2026-W34" (연말 52/53주 롤오버 포함).
+// 주차 id는 빈 번호 없이 이어지는 시퀀스로 유지한다 — 새 주차는 마지막 주차의 다음 번호.
+export function isoWeekIdAfter(id) {
+  const m = String(id).match(/^(\d{4})-W(\d{2})$/);
+  if (!m) return id;
+  const y = parseInt(m[1], 10);
+  const w = parseInt(m[2], 10);
+  // ISO 주차의 기준: 1월 4일은 항상 그 해의 1주차에 속한다
+  const jan4 = new Date(Date.UTC(y, 0, 4));
+  const monW1 = new Date(jan4);
+  monW1.setUTCDate(jan4.getUTCDate() - ((jan4.getUTCDay() || 7) - 1));
+  const nextMon = new Date(monW1);
+  nextMon.setUTCDate(monW1.getUTCDate() + w * 7); // w주차의 다음 주 월요일
+  return isoWeekId(new Date(nextMon.getUTCFullYear(), nextMon.getUTCMonth(), nextMon.getUTCDate()));
+}
+
+// 날짜 → ISO 주차 id ("2026-W27") — 첫 주차 기본값 제안용
 export function isoWeekId(date) {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
   const dayNum = d.getUTCDay() || 7;
