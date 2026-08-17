@@ -17,7 +17,7 @@ import {
   normalizePassword,
   b64encode,
 } from "./crypto.js";
-import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER, isNoShow, isNA, triState, mathDatesForWeek } from "./store.js";
+import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, isoWeekIdAfter, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER, isNoShow, isNA, triState, mathDatesForWeek } from "./store.js";
 import { $, el, clear, toast, confirmModal, copyText, setBusy } from "./ui.js";
 import { runWizard, createStudent, emptyStudentBlob, emptyAcademyBlob, printCodeCards } from "./setup.js";
 import { buildDirectorReport } from "./report.js";
@@ -292,6 +292,8 @@ function updateBadge() {
 
 function renderMain() {
   migrateMathHomework();
+  // 주차 id에 빈 번호·시간 역순이 있으면 로그인 시점에 한 번 정리한다 (발행해야 반영)
+  for (const a of S.roster.academies) normalizeWeekIds(a.fileId);
   // 접속 주소(코드 카드에 인쇄됨)를 현재 도메인 기준으로 유지 — 커스텀 도메인 연결 시 자동 갱신.
   // localhost/파일 열기 등 https가 아닌 접속에서는 건드리지 않는다.
   const curSiteURL = location.origin + location.pathname.replace(/admin\.html.*$/, "");
@@ -403,6 +405,56 @@ function migrateMathHomework() {
       }
     }
   }
+}
+
+// ---------- 주차 id 정규화 ----------
+// 규칙: 주차 id는 '시간 순서(첫 수업일 기준)'대로, 첫 주차 id부터 빈 번호 없이 이어진다.
+// - 사이가 비면(예: 2026-W33 → 2026-W35) 뒤 주차를 당겨서 다시 매긴다.
+// - 수업일이 기존 주차들 사이(중간)인 주차가 생기면 시간 순서에 맞게 id를 재배열한다.
+// - 수업일 없는 주차는 맨 뒤(기존 순서 유지)로 둔다.
+// 학생 blob의 주차 키와 퀴즈의 weekId, 현재 선택 주차도 함께 옮긴다.
+function normalizeWeekIds(academyFileId) {
+  const blob = S.academies.get(academyFileId);
+  if (!blob || !(blob.weeks || []).length) return false;
+  const cur = sortWeeks(blob.weeks);
+  const ordered = [...cur].sort((a, b) => {
+    const sa = (a.sessions || [])[0];
+    const sb = (b.sessions || [])[0];
+    if (sa && sb) return sa < sb ? -1 : sa > sb ? 1 : a.id < b.id ? -1 : 1;
+    if (sa) return -1;
+    if (sb) return 1;
+    return a.id < b.id ? -1 : 1;
+  });
+  // 첫 주차의 기존 id를 기준점으로 한 주씩 이어지는 시퀀스를 부여
+  let expected = cur[0].id;
+  const map = new Map(); // oldId -> newId (바뀌는 것만)
+  const plan = [];
+  for (const w of ordered) {
+    plan.push([w, expected]);
+    if (w.id !== expected) map.set(w.id, expected);
+    expected = isoWeekIdAfter(expected);
+  }
+  if (!map.size) return false;
+  for (const [w, newId] of plan) w.id = newId;
+  for (const q of blob.quizzes || []) {
+    if (q.weekId && map.has(q.weekId)) q.weekId = map.get(q.weekId);
+  }
+  for (const st of S.roster.students.filter((s) => s.academyFileId === academyFileId)) {
+    const sb = S.students.get(st.fileId);
+    if (!sb?.weeks) continue;
+    const entries = Object.entries(sb.weeks);
+    if (!entries.some(([k]) => map.has(k))) continue;
+    // 한 번에 재구성 — 삭제된 주차의 잔여 키가 새 id와 겹치면 살아 있는 주차 데이터가 우선
+    const rebuilt = {};
+    for (const [k, v] of entries) if (!map.has(k)) rebuilt[k] = v;
+    for (const [k, v] of entries) if (map.has(k)) rebuilt[map.get(k)] = v;
+    sb.weeks = rebuilt;
+    markStudent(st.fileId);
+  }
+  const sel = S.selWeek.get(academyFileId);
+  if (sel && map.has(sel)) S.selWeek.set(academyFileId, map.get(sel));
+  markAcademy(academyFileId);
+  return true;
 }
 
 // ---------- 드랍(수강 중단) 학생 자동 표시 ----------
@@ -859,6 +911,8 @@ function manageWeeks() {
       w.sessions = dates;
       markDroppedForNewSessions(S.selAcademy, w.id, dates.filter((d) => !before.has(d)));
       markAcademy(S.selAcademy);
+      // 수업일이 기존 주차들 사이(중간)로 들어갔다면 id를 시간 순서대로 다시 매긴다
+      if (normalizeWeekIds(S.selAcademy)) selId = w.id;
       toast("저장되었습니다.", "ok");
       renderEditor(); // 라벨 변경을 선택 목록에 반영
     };
@@ -881,6 +935,7 @@ function manageWeeks() {
               });
               if (!ok) return;
               blob.weeks = blob.weeks.filter((x) => x.id !== w.id);
+              normalizeWeekIds(S.selAcademy); // 삭제로 빈 번호가 남지 않게 당겨서 재정렬
               selId = null; // 최신 주차로 되돌아감
               markAcademy(S.selAcademy);
               renderEditor();
@@ -898,16 +953,10 @@ function manageWeeks() {
     const cur = selectedWeek();
     if (cur) S.selWeek.set(S.selAcademy, cur.id);
     const today = new Date();
-    let id = isoWeekId(today);
-    // 중복 시 뒤로 밀기
-    const ids = new Set(blob.weeks.map((w) => w.id));
-    let bump = 0;
-    while (ids.has(id)) {
-      bump += 7;
-      const d = new Date(today);
-      d.setDate(d.getDate() + bump);
-      id = isoWeekId(d);
-    }
+    // 주차 id는 빈 번호가 생기지 않게 '마지막 주차의 바로 다음 번호'를 쓴다.
+    // (오늘 날짜의 ISO 주차를 쓰면 건너뛴 주가 있을 때 사이 번호가 비어 버린다 — 첫 주차만 오늘 기준)
+    const weeksNow = sortWeeks(blob.weeks);
+    const id = weeksNow.length ? isoWeekIdAfter(weeksNow[weeksNow.length - 1].id) : isoWeekId(today);
     const month = today.getMonth() + 1;
     const nth = Math.ceil(today.getDate() / 7);
     blob.weeks.push({
