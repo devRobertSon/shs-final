@@ -1,7 +1,7 @@
 // report.js — 원장님용 주간 수업 현황 보고서 생성 + 누락 항목 검사
 // 보고서는 브라우저 메모리에서만 만들어지고 인쇄(PDF 저장)로만 나간다.
 // 저장소에는 절대 커밋되지 않는다 (실명·점수 포함).
-import { el } from "./ui.js";
+import { el, mdBlock } from "./ui.js";
 import { sortWeeks, sortQuizzes, ATTENDANCE, ATTENDANCE_ORDER, toYMD, isNoShow, isNA, triState, mathDatesForWeek, dispScore, dispMax } from "./store.js";
 
 // 입력:
@@ -435,7 +435,7 @@ export function buildDirectorReport({
             el("span", { text: n.title }),
             el("span", { class: "rd-notice-date", text: n.date || "" }),
           ]),
-          n.body ? el("div", { class: "rd-text", text: n.body }) : null,
+          n.body ? mdBlock(n.body, "rd-text md-body") : null,
         ])
       );
     }

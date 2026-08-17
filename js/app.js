@@ -17,7 +17,7 @@ import {
   toYMD,
   visitPingURL,
 } from "./store.js";
-import { $, el, clear, toast, copyText, tabBar, setBusy, spinner } from "./ui.js";
+import { $, el, clear, toast, copyText, tabBar, setBusy, spinner, mdBlock } from "./ui.js";
 import { renderScoreChart, renderHistogram } from "./chart.js";
 
 // 자동 로그인 체크 → localStorage (탭을 닫아도 유지, 로그아웃 전까지)
@@ -612,7 +612,7 @@ function renderReport(container) {
           })
         );
       }
-      if (rep.note) sec.appendChild(el("div", { class: "report-body", text: rep.note }));
+      if (rep.note) sec.appendChild(mdBlock(rep.note, "report-body md-body"));
       card.appendChild(sec);
     }
   }
@@ -630,7 +630,7 @@ function renderNotices(container) {
     card.appendChild(el("p", { class: "empty", text: "등록된 공지가 없습니다." }));
   } else {
     for (const n of notices) {
-      const body = el("div", { class: "notice-body", text: n.body || "" });
+      const body = mdBlock(n.body || "", "notice-body md-body");
       body.hidden = true;
       const head = el("div", { class: "notice-head" }, [
         n.pinned ? el("span", { class: "pin", text: "📌 고정" }) : null,
@@ -1101,7 +1101,7 @@ function renderTeacherReports(container) {
             el("span", { class: "t-report-name", text: r.name }),
             r.pdfName ? el("span", { class: "t-pdf-chip", text: `📎 ${r.pdfName}` }) : null,
           ]),
-          r.note ? el("div", { class: "report-body", style: "font-size:14px", text: r.note }) : null,
+          r.note ? mdBlock(r.note, "report-body md-body t-note-md") : null,
         ])
       );
     }

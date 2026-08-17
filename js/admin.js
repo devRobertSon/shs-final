@@ -18,7 +18,7 @@ import {
   b64encode,
 } from "./crypto.js";
 import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, isoWeekIdAfter, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER, isNoShow, isNA, triState, mathDatesForWeek } from "./store.js";
-import { $, el, clear, toast, confirmModal, copyText, setBusy } from "./ui.js";
+import { $, el, clear, toast, confirmModal, copyText, setBusy, mdBlock } from "./ui.js";
 import { runWizard, createStudent, emptyStudentBlob, emptyAcademyBlob, printCodeCards } from "./setup.js";
 import { buildDirectorReport } from "./report.js";
 import { publishToGitHub, guessRepoFromLocation } from "./github.js";
@@ -2186,7 +2186,9 @@ function renderReportsTab(container) {
   const count = el("div", { class: "char-count" });
   const ta = el("textarea", {
     rows: "6",
-    placeholder: "이 단원에 대해 학생/학부모에게 전달할 사항을 적어 주세요. 그대로 보입니다.",
+    placeholder:
+      "이 단원에 대해 학생/학부모에게 전달할 사항을 적어 주세요.\n" +
+      "마크다운 사용 가능: **굵게**, - 목록, 1. 번호 목록, [이름](https://링크), # 제목",
   });
 
   const ensureRep = (st) => {
@@ -2350,7 +2352,10 @@ function renderNoticesTab(container) {
   const form = (notice, onDone) => {
     const title = el("input", { type: "text", value: notice?.title || "", placeholder: "제목" });
     const date = el("input", { type: "date", value: notice?.date || toYMD(new Date()) });
-    const body = el("textarea", { rows: "4", placeholder: "내용" });
+    const body = el("textarea", {
+      rows: "4",
+      placeholder: "내용 — 마크다운 사용 가능: **굵게**, - 목록, [이름](https://링크), # 제목",
+    });
     body.value = notice?.body || "";
     const pinned = el("input", { type: "checkbox", checked: !!notice?.pinned });
     return el("div", { class: "card", style: "padding:12px" }, [
@@ -2393,7 +2398,7 @@ function renderNoticesTab(container) {
           el("span", { class: "notice-title", text: n.title }),
           el("span", { class: "notice-date", text: n.date || "" }),
         ]),
-        el("div", { class: "notice-body", text: n.body || "" }),
+        mdBlock(n.body || "", "notice-body md-body"),
         el("div", { class: "toolbar" }, [
           el("button", {
             class: "btn btn-small",
