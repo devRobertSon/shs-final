@@ -537,7 +537,13 @@ function selectedWeek() {
   const weeks = sortWeeks(blob.weeks);
   if (!weeks.length) return null;
   const wid = S.selWeek.get(S.selAcademy);
-  return weeks.find((w) => w.id === wid) || weeks[weeks.length - 1];
+  const found = weeks.find((w) => w.id === wid);
+  if (found) return found;
+  // 기본값: 아직 시작하지 않은 주차(첫 수업일이 미래)는 건너뛴 가장 최근 주차 —
+  // 다음 주차를 미리 만들어 두어도 회차별 입력·보고서가 미래 주차로 점프하지 않는다.
+  const today = toYMD(new Date());
+  const started = weeks.filter((w) => !(w.sessions || []).length || w.sessions[0] <= today);
+  return started[started.length - 1] || weeks[weeks.length - 1];
 }
 
 function academyQuizzes(fileId = S.selAcademy) {
@@ -886,6 +892,11 @@ function manageWeeks() {
   };
 
   const addWeek = () => {
+    // 새 주차를 만들어도 회차별 입력 등에서 보고 있던 주차는 그대로 유지한다 —
+    // 기본값이 '가장 최근 주차'라서 고정해 두지 않으면 화면이 새 주차로 점프해 버린다.
+    // (새 주차 편집은 이 모달 안(selId)에서만 이어진다)
+    const cur = selectedWeek();
+    if (cur) S.selWeek.set(S.selAcademy, cur.id);
     const today = new Date();
     let id = isoWeekId(today);
     // 중복 시 뒤로 밀기
@@ -906,8 +917,7 @@ function manageWeeks() {
       homework: [],
       progress: "",
     });
-    S.selWeek.set(S.selAcademy, id);
-    selId = id; // 새 주차를 바로 편집
+    selId = id; // 새 주차를 바로 편집 (모달 안에서만 — 바깥 화면의 선택 주차는 유지)
     markAcademy(S.selAcademy);
     renderEditor();
   };
