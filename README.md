@@ -25,10 +25,17 @@
 2. **Build and deployment → Source**를 `Deploy from a branch`로 두고,
    **Branch**를 `main` / `/ (root)`로 선택 후 **Save**.
 3. 1~2분 뒤 `https://<사용자명>.github.io/<저장소이름>/` 주소가 생깁니다.
+4. (선택) **커스텀 도메인**: 같은 화면의 **Custom domain**에 보유한 도메인을 입력하고
+   DNS에 CNAME 레코드를 연결한 뒤 **Enforce HTTPS**를 켭니다.
+   → **이 저장소는 현재 `https://shs.robertson.kr` 에 연결되어 있습니다.**
+   도메인을 연결·변경한 뒤에는 **새 주소로 관리 페이지에 한 번 접속해 발행**하세요 —
+   코드 카드에 인쇄되는 접속 주소와 접속 통계가 새 도메인 기준으로 자동 갱신됩니다.
+   (기존에 나눠 준 코드 카드의 옛 `github.io` 주소로도 계속 접속됩니다)
 
 ### ② 관리 페이지 접속
 
 `https://<사용자명>.github.io/<저장소이름>/admin.html` 을 엽니다.
+(커스텀 도메인을 연결했다면 이 저장소 기준 `https://shs.robertson.kr/admin.html`)
 (관리 페이지 주소는 학생에게 알려줘도 마스터 비밀번호 없이는 아무것도 볼 수 없지만, 알릴 필요는 없습니다.)
 
 ### ③ 초기 설정 마법사

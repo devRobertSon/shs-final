@@ -174,7 +174,8 @@ function logout() {
 function pingVisit(kind) {
   try {
     if (sessionStorage.getItem("shs.visit-pinged")) return;
-    const url = visitPingURL(kind);
+    // 커스텀 도메인에서는 meta.site.repo(발행 시 기록)로 릴리스 주소를 만든다
+    const url = visitPingURL(kind, location, meta.site?.repo);
     if (!url) return; // localhost 등 — 집계하지 않음
     sessionStorage.setItem("shs.visit-pinged", "1");
     fetch(url, { mode: "no-cors", cache: "no-store" }).catch(() => {});

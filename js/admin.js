@@ -292,6 +292,13 @@ function updateBadge() {
 
 function renderMain() {
   migrateMathHomework();
+  // 접속 주소(코드 카드에 인쇄됨)를 현재 도메인 기준으로 유지 — 커스텀 도메인 연결 시 자동 갱신.
+  // localhost/파일 열기 등 https가 아닌 접속에서는 건드리지 않는다.
+  const curSiteURL = location.origin + location.pathname.replace(/admin\.html.*$/, "");
+  if (location.protocol === "https:" && S.roster.siteURL !== curSiteURL) {
+    S.roster.siteURL = curSiteURL;
+    markRoster();
+  }
   if (!S.selAcademy || !S.roster.academies.some((a) => a.fileId === S.selAcademy)) {
     S.selAcademy = S.roster.academies[0]?.fileId || null;
   }
@@ -2972,6 +2979,11 @@ async function buildPublishFiles(mode) {
   recomputeStats();
 
   // 3) meta 갱신
+  // 커스텀 도메인에서도 접속 통계 핑이 동작하도록 저장소 경로를 기록
+  // (핑 URL에 원래 들어 있던 값이라 새로운 정보 노출은 아님 — 저장소 자체가 public)
+  if (S.roster.repo?.owner && S.roster.repo?.name) {
+    S.meta.site.repo = `${S.roster.repo.owner}/${S.roster.repo.name}`;
+  }
   S.meta.students = S.roster.students.map((s) => s.fileId);
   S.meta.academies = S.roster.academies.map((a) => a.fileId);
   S.meta.teachers = (S.roster.teachers || []).map((t) => t.fileId);
