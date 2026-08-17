@@ -116,6 +116,72 @@ a {
   width: 100%;
 }
 
+/* 마크다운 본문 (공지·리포트 전달사항 — ui.js mdBlock) */
+.md-body p {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+.md-body ul,
+.md-body ol {
+  margin: 0 0 8px;
+  padding-left: 22px;
+}
+.md-body li {
+  margin: 2px 0;
+}
+.md-body p:last-child,
+.md-body ul:last-child,
+.md-body ol:last-child,
+.md-body blockquote:last-child {
+  margin-bottom: 0;
+}
+.md-body .md-h1 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 10px 0 6px;
+}
+.md-body .md-h2 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 8px 0 4px;
+}
+.md-body .md-h3 {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 6px 0 3px;
+}
+.md-body .md-h1:first-child,
+.md-body .md-h2:first-child,
+.md-body .md-h3:first-child {
+  margin-top: 0;
+}
+.md-body blockquote {
+  margin: 0 0 8px;
+  padding: 2px 10px;
+  border-left: 3px solid var(--hairline);
+  color: var(--muted);
+}
+.md-body hr {
+  border: none;
+  border-top: 1px solid var(--hairline);
+  margin: 10px 0;
+}
+.md-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  background: var(--page);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.md-body a {
+  color: var(--accent-strong);
+  word-break: break-all;
+}
+.t-note-md {
+  font-size: 14px;
+}
+
 input[type="text"],
 input[type="password"],
 input[type="email"],
