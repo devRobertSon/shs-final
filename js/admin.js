@@ -895,18 +895,78 @@ function manageWeeks() {
 
     const w = weeks.find((x) => x.id === selId);
     const labelIn = el("input", { type: "text", value: w.label });
-    const sessIn = el("input", {
-      type: "text",
-      value: (w.sessions || []).join(", "),
-      placeholder: "수업일: 2026-07-07, 2026-07-10",
-    });
+
+    // 수업일 선택 달력 — 날짜를 눌러 켜고 끈다. 다른 주차의 수업일은 겹치지 않게 비활성.
+    const selected = new Set(w.sessions || []);
+    const firstSel = [...selected].sort()[0];
+    let calMonth = firstSel ? new Date(`${firstSel}T00:00:00`) : new Date();
+    calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth(), 1);
+    const calBox = el("div", { class: "cal" });
+    const sumLine = el("p", { class: "hint" });
+    const renderCal = () => {
+      clear(calBox);
+      const y = calMonth.getFullYear();
+      const m = calMonth.getMonth();
+      calBox.appendChild(
+        el("div", { class: "cal-head" }, [
+          el("button", {
+            class: "btn btn-small",
+            text: "‹",
+            "aria-label": "이전 달",
+            onclick: () => {
+              calMonth = new Date(y, m - 1, 1);
+              renderCal();
+            },
+          }),
+          el("span", { class: "cal-title", text: `${y}년 ${m + 1}월` }),
+          el("button", {
+            class: "btn btn-small",
+            text: "›",
+            "aria-label": "다음 달",
+            onclick: () => {
+              calMonth = new Date(y, m + 1, 1);
+              renderCal();
+            },
+          }),
+        ])
+      );
+      const grid = el("div", { class: "cal-grid" });
+      for (const d of ["일", "월", "화", "수", "목", "금", "토"]) grid.appendChild(el("div", { class: "cal-dow", text: d }));
+      const others = new Set();
+      for (const x of blob.weeks) if (x.id !== w.id) for (const d of x.sessions || []) others.add(d);
+      const firstDow = new Date(y, m, 1).getDay();
+      for (let i = 0; i < firstDow; i++) grid.appendChild(el("div"));
+      const days = new Date(y, m + 1, 0).getDate();
+      for (let day = 1; day <= days; day++) {
+        const ymd = `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        const isSel = selected.has(ymd);
+        const isOther = others.has(ymd);
+        grid.appendChild(
+          el("button", {
+            class: `cal-day${isSel ? " sel" : ""}${isOther ? " other" : ""}`,
+            text: String(day),
+            disabled: isOther,
+            title: isOther ? "다른 주차의 수업일입니다" : "",
+            "aria-label": `${y}년 ${m + 1}월 ${day}일${isSel ? " (선택됨)" : ""}`,
+            onclick: () => {
+              if (isSel) selected.delete(ymd);
+              else selected.add(ymd);
+              renderCal();
+            },
+          })
+        );
+      }
+      calBox.appendChild(grid);
+      const list = [...selected].sort();
+      sumLine.textContent = list.length
+        ? `선택한 수업일 ${list.length}일: ${list.map((d) => d.slice(5).replace("-", "/")).join(" · ")}`
+        : "달력에서 수업일을 눌러 선택하세요.";
+    };
+    renderCal();
+
     const save = () => {
       w.label = labelIn.value.trim() || w.label;
-      const dates = sessIn.value
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s))
-        .sort();
+      const dates = [...selected].sort();
       const before = new Set(w.sessions || []);
       w.sessions = dates;
       markDroppedForNewSessions(S.selAcademy, w.id, dates.filter((d) => !before.has(d)));
@@ -920,7 +980,7 @@ function manageWeeks() {
       el("div", { class: "card", style: "padding:10px" }, [
         el("div", { class: "hint", text: `ID: ${w.id}` }),
         el("label", { class: "field" }, [el("span", { text: "주차 이름" }), labelIn]),
-        el("label", { class: "field" }, [el("span", { text: "수업일 (쉼표로 구분)" }), sessIn]),
+        el("div", { class: "field" }, [el("span", { text: "수업일 (달력에서 선택)" }), calBox, sumLine]),
         el("div", { class: "item-row" }, [
           el("button", { class: "btn btn-small", text: "저장", onclick: save }),
           el("button", {
