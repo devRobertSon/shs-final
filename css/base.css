@@ -211,11 +211,13 @@ textarea:focus {
   outline-offset: 0;
   border-color: var(--accent);
 }
-label.field {
+label.field,
+div.field {
   display: block;
   margin: 10px 0;
 }
-label.field > span {
+label.field > span,
+div.field > span {
   display: block;
   font-size: 13px;
   color: var(--ink-2);

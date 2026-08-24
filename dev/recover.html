@@ -74,7 +74,7 @@
 
   <script type="module">
     import { deriveMasterKey, decryptJSON, importAesKeyB64 } from "../js/crypto.js";
-    import { sortWeeks, sortQuizzes, ATTENDANCE } from "../js/store.js";
+    import { sortWeeks, sortQuizzes, ATTENDANCE, weekDisplayLabel } from "../js/store.js";
 
     const $ = (id) => document.getElementById(id);
 
@@ -260,7 +260,7 @@
             const hwItems = w.homework || [];
             card.appendChild(
               el("div", {}, [
-                el("p", { style: "margin:12px 0 2px;font-weight:600;font-size:14px", text: w.label }),
+                el("p", { style: "margin:12px 0 2px;font-weight:600;font-size:14px", text: weekDisplayLabel(w) }),
                 lines.length ? el("p", { class: "hint", style: "margin:0", text: lines.join(" · ") }) : null,
                 hwItems.length
                   ? el("ol", {}, hwItems.map((h) => el("li", { text: h.text })))

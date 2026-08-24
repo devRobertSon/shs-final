@@ -150,6 +150,61 @@ button.att-cell.att-d {
   color: #8a5252;
 }
 
+/* 주차 관리 — 수업일 선택 달력 */
+.cal {
+  max-width: 340px;
+}
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 4px 0 6px;
+}
+.cal-title {
+  font-weight: 700;
+  font-size: 15px;
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.cal-dow {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 4px 0;
+}
+button.cal-day {
+  aspect-ratio: 1;
+  min-height: 34px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 10px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+button.cal-day:hover {
+  background: var(--page);
+  border-color: var(--hairline);
+}
+button.cal-day.sel {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+button.cal-day.other {
+  color: var(--muted);
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
+button.cal-day.other:hover {
+  background: transparent;
+  border-color: transparent;
+}
+
 /* 출석 상태 선택기: 셀 안 인라인 3×2 그리드 */
 .att-chooser {
   display: grid;
