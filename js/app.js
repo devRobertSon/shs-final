@@ -16,6 +16,9 @@ import {
   dispMax,
   toYMD,
   visitPingURL,
+  WEEK_TYPES,
+  weekType,
+  weekDisplayLabel,
 } from "./store.js";
 import { $, el, clear, toast, copyText, tabBar, setBusy, spinner, mdBlock } from "./ui.js";
 import { renderScoreChart, renderHistogram } from "./chart.js";
@@ -296,10 +299,11 @@ function renderHomework(container, weeks) {
   card.appendChild(
     el("p", { class: "hint", text: "선생님이 수업 시간에 확인 후 체크합니다. (최근 수업부터)" })
   );
-  // 블록 제목: 주차 이름 대신 그 주 첫 수업 날짜 (예: "7월 12일 숙제")
+  // 블록 제목: 주차 이름 대신 그 주 첫 수업 날짜 (예: "7월 12일 과학 숙제", "8월 20일 면담 숙제")
   const hwBlockTitle = (week) => {
+    const t = WEEK_TYPES[weekType(week)];
     const ss = week.sessions || [];
-    return ss.length ? `${fmtDateK(ss[0])} 과학 숙제` : `${week.label} 과학 숙제`;
+    return ss.length ? `${fmtDateK(ss[0])} ${t} 숙제` : `${week.label} ${t} 숙제`;
   };
   let anyHold = false;
   let anyNA = false;
@@ -657,7 +661,7 @@ function renderMaterials(container, weeks) {
   }
   const weekLabel = (id) => {
     const w = weeks.find((x) => x.id === id);
-    return w ? w.label : "";
+    return w ? weekDisplayLabel(w) : "";
   };
   const sorted = [...materials].sort((a, b) => (b.weekId || "").localeCompare(a.weekId || ""));
   for (const m of sorted) {
@@ -687,7 +691,7 @@ function renderAttendance(container, weeks) {
   card.appendChild(el("p", { class: "hint", text: "주차별 출석과 수업 진도입니다. (최신 주차부터)" }));
   for (const week of shown) {
     const block = el("div", { class: "week-block" }, [
-      el("div", { class: "wb-head" }, [el("span", { class: "wb-label", text: week.label })]),
+      el("div", { class: "wb-head" }, [el("span", { class: "wb-label", text: weekDisplayLabel(week) })]),
     ]);
     if ((week.sessions || []).length) {
       const att = weekData(week.id).attendance || {};
@@ -941,7 +945,11 @@ function renderTeacherHomework(container, weeks) {
     const denom = items.length - holds - nas;
     return { done, holds, nas, denom };
   };
-  const shortWeek = (w) => shortLabel(w.label) || w.id;
+  // 열 제목 — 면담·면접 주차는 종류를 함께 표시해 과학 주차와 구분
+  const shortWeek = (w) => {
+    const base = shortLabel(w.label) || w.id;
+    return weekType(w) === "science" ? base : `[${WEEK_TYPES[weekType(w)]}] ${base}`;
+  };
 
   const tbl = el("table", { class: "grid" });
   tbl.appendChild(
@@ -1133,7 +1141,7 @@ function renderTeacherScores(container, weeks, state, rerender) {
   const datedWeekIds = new Set(sess.map((s) => s.week.id));
   for (const w of weeks) {
     if (!datedWeekIds.has(w.id) && quizzesOfWeek(w).length) {
-      groups.push({ key: `w:${w.id}`, label: `${w.label} (수업일 미입력)`, quizzes: quizzesOfWeek(w) });
+      groups.push({ key: `w:${w.id}`, label: `${weekDisplayLabel(w)} (수업일 미입력)`, quizzes: quizzesOfWeek(w) });
     }
   }
   const tbd = allQuizzes.filter((q) => !q.weekId || !weeks.some((w) => w.id === q.weekId));

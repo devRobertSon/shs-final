@@ -2,7 +2,7 @@
 // 보고서는 브라우저 메모리에서만 만들어지고 인쇄(PDF 저장)로만 나간다.
 // 저장소에는 절대 커밋되지 않는다 (실명·점수 포함).
 import { el, mdBlock } from "./ui.js";
-import { sortWeeks, sortQuizzes, ATTENDANCE, ATTENDANCE_ORDER, toYMD, isNoShow, isNA, triState, mathDatesForWeek, dispScore, dispMax } from "./store.js";
+import { sortWeeks, sortQuizzes, ATTENDANCE, ATTENDANCE_ORDER, toYMD, isNoShow, isNA, triState, mathDatesForWeek, dispScore, dispMax, prevWeekOfType, weekDisplayLabel } from "./store.js";
 
 // 입력:
 //   academyName, weeks(학원 blob), quizzes(학원 blob의 단원 퀴즈 목록),
@@ -24,7 +24,8 @@ export function buildDirectorReport({
   const sorted = sortWeeks(weeks);
   const wIdx = sorted.findIndex((w) => w.id === weekId);
   const W = sorted[wIdx];
-  const P = wIdx > 0 ? sorted[wIdx - 1] : null; // 저번 주차
+  // 저번 주차 = 같은 종류(과학/면담/면접)의 직전 주차 — 과학 사이에 면담이 끼어도 과학끼리 이어진다
+  const P = prevWeekOfType(weeks, weekId);
   const weekOrder = new Map(sorted.map((w, i) => [w.id, i]));
   const allQuizzes = sortQuizzes(quizzes, weeks);
 
@@ -57,7 +58,7 @@ export function buildDirectorReport({
       ]),
       el("div", { class: "rd-week-box" }, [
         el("div", { class: "rd-week-label", text: "보고 주차" }),
-        el("div", { class: "rd-week", text: W.label }),
+        el("div", { class: "rd-week", text: weekDisplayLabel(W) }),
       ]),
     ])
   );
@@ -156,7 +157,7 @@ export function buildDirectorReport({
       );
     };
     if (!items.length) {
-      warn(`지난 주(${P.label})에 등록된 숙제 항목이 없습니다.`);
+      warn(`지난 주(${weekDisplayLabel(P)})에 등록된 숙제 항목이 없습니다.`);
       hwChildren.push(el("p", { class: "rd-empty", text: "(과학 숙제 항목 없음)" }));
       if (mDates.length) {
         const tbl = el("table", { class: "rd-table" });
@@ -251,7 +252,7 @@ export function buildDirectorReport({
         info(`지난 주 숙제 '확인 전(◌)' — ${holdNames.join(", ")}: 다음 수업에서 확인 후 체크하세요.`);
       }
     }
-    doc.appendChild(section(`지난 주 숙제 수행 — ${P.label}`, hwChildren));
+    doc.appendChild(section(`지난 주 숙제 수행 — ${weekDisplayLabel(P)}`, hwChildren));
 
     // ---------- ④ 지난 주 단원 퀴즈 결과 + 자동 분석 (P) ----------
     const quizChildren = [];
@@ -264,7 +265,7 @@ export function buildDirectorReport({
       .filter((d) => d.avg != null);
 
     if (!quizzesP.length) {
-      warn(`지난 주(${P.label})에 등록된 단원 퀴즈가 없습니다.`);
+      warn(`지난 주(${weekDisplayLabel(P)})에 등록된 단원 퀴즈가 없습니다.`);
       quizChildren.push(el("p", { class: "rd-empty", text: "(지난 주 퀴즈 없음)" }));
     } else {
       // 퀴즈별 통계 (미응시 = null 저장 → 평균 제외·경고 아님 / 키 없음 = 미입력 → 경고 /
@@ -413,7 +414,7 @@ export function buildDirectorReport({
       quizChildren.push(el("h3", { class: "rd-h3", text: "단원별 학원 평균 추이" }));
       quizChildren.push(renderTrend(trendData, Math.max(100, ...allQuizzes.map((q) => dispMax(q)))));
     }
-    doc.appendChild(section(`지난 주 단원 퀴즈 결과 — ${P.label}`, quizChildren));
+    doc.appendChild(section(`지난 주 단원 퀴즈 결과 — ${weekDisplayLabel(P)}`, quizChildren));
   }
 
   // ---------- ⑤ 공지사항 (W 기간 + 고정) ----------

@@ -17,7 +17,7 @@ import {
   normalizePassword,
   b64encode,
 } from "./crypto.js";
-import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, isoWeekIdAfter, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER, isNoShow, isNA, triState, mathDatesForWeek } from "./store.js";
+import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, isoWeekIdAfter, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER, isNoShow, isNA, triState, mathDatesForWeek, WEEK_TYPES, weekType, weekDisplayLabel, prevWeekOfType } from "./store.js";
 import { $, el, clear, toast, confirmModal, copyText, setBusy, mdBlock } from "./ui.js";
 import { runWizard, createStudent, emptyStudentBlob, emptyAcademyBlob, printCodeCards } from "./setup.js";
 import { buildDirectorReport } from "./report.js";
@@ -664,7 +664,14 @@ function copyQuizToOtherAcademies(unit, weekId, max, half) {
     if (weekId && srcWeek) {
       ab.weeks = ab.weeks || [];
       if (!ab.weeks.find((x) => x.id === weekId)) {
-        ab.weeks.push({ id: srcWeek.id, label: srcWeek.label, sessions: [], homework: [], progress: "" });
+        ab.weeks.push({
+          id: srcWeek.id,
+          label: srcWeek.label,
+          ...(srcWeek.type ? { type: srcWeek.type } : {}),
+          sessions: [],
+          homework: [],
+          progress: "",
+        });
         weekMade.push(a.name);
       }
     }
@@ -702,7 +709,7 @@ function editQuiz(quiz) {
   const defaultWeek = quiz ? quiz.weekId || "" : selectedWeek()?.id || "";
   weekSel.appendChild(el("option", { value: "", text: "주차 미정 (나중에 지정)", selected: defaultWeek === "" }));
   for (const w of weeks) {
-    weekSel.appendChild(el("option", { value: w.id, text: w.label, selected: w.id === defaultWeek }));
+    weekSel.appendChild(el("option", { value: w.id, text: weekDisplayLabel(w), selected: w.id === defaultWeek }));
   }
   const maxIn = el("input", { type: "number", value: String(quiz?.max || 100), min: "1" });
   const halfChk = el("input", { type: "checkbox", checked: !!quiz?.half });
@@ -849,7 +856,7 @@ function toolbar(container, { withWeek = true } = {}) {
     const weeks = sortWeeks(academyBlob()?.weeks || []);
     const cur = selectedWeek();
     for (const w of weeks) {
-      wSel.appendChild(el("option", { value: w.id, text: w.label, selected: cur && w.id === cur.id }));
+      wSel.appendChild(el("option", { value: w.id, text: weekDisplayLabel(w), selected: cur && w.id === cur.id }));
     }
     if (!weeks.length) wSel.appendChild(el("option", { text: "주차 없음", value: "" }));
     wSel.addEventListener("change", () => {
@@ -882,7 +889,7 @@ function manageWeeks() {
 
     const weekSel = el("select", { "aria-label": "관리할 주차 선택" });
     for (const x of weeks) {
-      weekSel.appendChild(el("option", { value: x.id, text: x.label, selected: x.id === selId }));
+      weekSel.appendChild(el("option", { value: x.id, text: weekDisplayLabel(x), selected: x.id === selId }));
     }
     weekSel.addEventListener("change", () => {
       selId = weekSel.value;
@@ -894,6 +901,11 @@ function manageWeeks() {
     );
 
     const w = weeks.find((x) => x.id === selId);
+    // 수업 종류(과학/면담/면접) — 회차별 입력·보고서의 '지난 주'는 같은 종류끼리 이어진다
+    const typeSel = el("select", { "aria-label": "수업 종류 선택" });
+    for (const [tv, tl] of Object.entries(WEEK_TYPES)) {
+      typeSel.appendChild(el("option", { value: tv, text: tl, selected: weekType(w) === tv }));
+    }
     const labelIn = el("input", { type: "text", value: w.label });
 
     // 수업일 선택 달력 — 날짜를 눌러 켜고 끈다. 다른 주차의 수업일은 겹치지 않게 비활성.
@@ -965,6 +977,7 @@ function manageWeeks() {
     renderCal();
 
     const save = () => {
+      w.type = typeSel.value;
       w.label = labelIn.value.trim() || w.label;
       const dates = [...selected].sort();
       const before = new Set(w.sessions || []);
@@ -979,6 +992,8 @@ function manageWeeks() {
     body.appendChild(
       el("div", { class: "card", style: "padding:10px" }, [
         el("div", { class: "hint", text: `ID: ${w.id}` }),
+        el("label", { class: "field" }, [el("span", { text: "수업 종류" }), typeSel]),
+        el("p", { class: "hint", text: "회차별 입력·보고서의 '지난 주' 숙제·퀴즈는 같은 종류(과학/면담/면접)의 주차끼리 이어집니다." }),
         el("label", { class: "field" }, [el("span", { text: "주차 이름" }), labelIn]),
         el("div", { class: "field" }, [el("span", { text: "수업일 (달력에서 선택)" }), calBox, sumLine]),
         el("div", { class: "item-row" }, [
@@ -1721,9 +1736,11 @@ function renderWeeklyTab(container) {
     container.appendChild(card);
     return;
   }
-  const weeks = sortWeeks(academyBlob().weeks);
-  const idx = weeks.findIndex((w) => w.id === week.id);
-  const prev = idx > 0 ? weeks[idx - 1] : null;
+  // '지난 주'는 같은 종류(과학/면담/면접)의 직전 주차 — 과학 수업 사이에 면담 주차가
+  // 끼어 있어도 과학 숙제·퀴즈 확인은 이전 과학 주차로 이어진다.
+  const isSci = weekType(week) === "science";
+  const tl = WEEK_TYPES[weekType(week)];
+  const prev = prevWeekOfType(academyBlob().weeks, week.id);
   const emptyCard = (title, msg) => {
     const c = el("div", { class: "card" }, [el("h2", { text: title })]);
     c.appendChild(el("p", { class: "empty", text: msg }));
@@ -1733,26 +1750,31 @@ function renderWeeklyTab(container) {
     el("p", {
       class: "hint",
       style: "margin:4px 2px 10px",
-      text: `${week.label} 수업 기준 한 페이지 입력입니다 — 지난 주(${prev ? prev.label : "없음"}) 숙제·퀴즈 확인부터 이번 주 기록까지 순서대로 진행하세요.`,
+      text: `${weekDisplayLabel(week)} 수업 기준 한 페이지 입력입니다 — 지난 ${isSci ? "주" : tl}(${prev ? prev.label : "없음"}) 숙제·퀴즈 확인부터 이번 주 기록까지 순서대로 진행하세요.`,
     })
   );
 
-  // ① 지난 주 과학 숙제 체크
-  if (prev) container.appendChild(homeworkCard(prev, { title: `① 지난 주 과학 숙제 체크 — ${prev.label}` }));
-  else container.appendChild(emptyCard("① 지난 주 과학 숙제 체크", "이전 주차가 없습니다 (첫 주차)."));
+  // ① 지난 주(같은 종류) 숙제 체크
+  const t1 = `① 지난 ${isSci ? "주 과학" : tl} 숙제 체크`;
+  if (prev) container.appendChild(homeworkCard(prev, { title: `${t1} — ${prev.label}` }));
+  else container.appendChild(emptyCard(t1, isSci ? "이전 주차가 없습니다 (첫 주차)." : `이전 ${tl} 주차가 없습니다 (첫 ${tl}).`));
 
   // ② 지난 주 수학 숙제 체크 — 이번 주차 보고서에 실릴 수학 수업 날짜들
-  //    (지난 과학 수업 이후 ~ 이번 과학 수업 전의 수학 수업)
-  const mDates = mathDatesForWeek(academyBlob().weeks, academyBlob().mathDates, week.id);
-  container.appendChild(
-    mathHomeworkCard({
-      dates: mDates,
-      title: `② 지난 주 수학 숙제 체크${mDates.length ? ` — ${mDates.map((d) => d.slice(5).replace("-", "/")).join(" · ")}` : ""}`,
-      manage: false,
-    })
-  );
+  //    (지난 과학 수업 이후 ~ 이번 과학 수업 전의 수학 수업 — 과학 주차에만 실린다)
+  if (isSci) {
+    const mDates = mathDatesForWeek(academyBlob().weeks, academyBlob().mathDates, week.id);
+    container.appendChild(
+      mathHomeworkCard({
+        dates: mDates,
+        title: `② 지난 주 수학 숙제 체크${mDates.length ? ` — ${mDates.map((d) => d.slice(5).replace("-", "/")).join(" · ")}` : ""}`,
+        manage: false,
+      })
+    );
+  } else {
+    container.appendChild(emptyCard("② 수학 숙제 체크", `수학 숙제는 과학 주차의 회차별 입력·보고서에만 표시됩니다 (${tl} 주차 제외).`));
+  }
 
-  // ③ 지난 주 퀴즈 점수 입력
+  // ③ 지난 주(같은 종류) 퀴즈 점수 입력
   const prevQuizzes = prev ? (academyBlob().quizzes || []).filter((q) => q.weekId === prev.id) : [];
   if (prevQuizzes.length) {
     for (const q of prevQuizzes) {
@@ -1760,7 +1782,14 @@ function renderWeeklyTab(container) {
     }
   } else {
     container.appendChild(
-      emptyCard("③ 지난 주 퀴즈 점수 입력", prev ? "지난 주차에 등록된 단원 퀴즈가 없습니다." : "이전 주차가 없습니다 (첫 주차).")
+      emptyCard(
+        "③ 지난 주 퀴즈 점수 입력",
+        prev
+          ? "지난 주차에 등록된 단원 퀴즈가 없습니다."
+          : isSci
+            ? "이전 주차가 없습니다 (첫 주차)."
+            : `이전 ${tl} 주차가 없습니다 (첫 ${tl}).`
+      )
     );
   }
 
@@ -1770,8 +1799,8 @@ function renderWeeklyTab(container) {
   // ⑤ 이번 주 진도
   container.appendChild(progressCard(week, { title: "⑤ 이번 주 진도" }));
 
-  // ⑥ 이번 주 과학 숙제 입력 (체크는 다음 주 ①에서)
-  const hwCard = homeworkCard(week, { title: `⑥ 이번 주 과학 숙제 입력 — ${week.label}`, checks: false });
+  // ⑥ 이번 주 숙제 입력 (체크는 다음 같은 종류 주차의 ①에서)
+  const hwCard = homeworkCard(week, { title: `⑥ 이번 주 ${isSci ? "과학" : tl} 숙제 입력 — ${week.label}`, checks: false });
   hwCard.appendChild(
     el("p", { class: "hint", text: "학생별 체크는 다음 주 '회차별 입력'의 ①에서 하게 됩니다. (또는 '과학 숙제' 탭)" })
   );
@@ -1809,7 +1838,8 @@ function renderHomeworkTab(container) {
     container.appendChild(card);
     return;
   }
-  container.appendChild(homeworkCard(week));
+  // 면담·면접 주차를 고르면 그 주차의 숙제를 같은 화면에서 체크한다 (제목에 종류 표시)
+  container.appendChild(homeworkCard(week, { title: `${WEEK_TYPES[weekType(week)]} 숙제 체크` }));
 }
 
 // ---------- ③-2 수학 숙제 체크 (날짜별) ----------

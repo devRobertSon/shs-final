@@ -78,6 +78,33 @@ export function sortWeeks(weeks) {
   return [...(weeks || [])].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
+// 주차(수업) 종류 — 과학 수업 사이에 면담·면접 수업이 끼어 있어도
+// 회차별 입력·보고서의 '지난 주'는 같은 종류의 주차끼리 이어진다.
+// week.type이 없으면 과학(기존 데이터 호환).
+export const WEEK_TYPES = { science: "과학", counsel: "면담", interview: "면접" };
+export function weekType(w) {
+  return w && WEEK_TYPES[w.type] ? w.type : "science";
+}
+
+// 목록·선택지 표시용 라벨 — 과학(기본)은 기존 그대로, 면담·면접만 앞에 종류를 붙인다
+export function weekDisplayLabel(w) {
+  if (!w) return "";
+  const t = weekType(w);
+  return t === "science" ? w.label : `[${WEEK_TYPES[t]}] ${w.label}`;
+}
+
+// 같은 종류의 직전 주차 — 회차별 입력 ①③과 보고서의 '지난 주'가 이 주차로 이어진다
+export function prevWeekOfType(weeks, weekId) {
+  const sorted = sortWeeks(weeks);
+  const idx = sorted.findIndex((w) => w.id === weekId);
+  if (idx < 0) return null;
+  const t = weekType(sorted[idx]);
+  for (let i = idx - 1; i >= 0; i--) {
+    if (weekType(sorted[i]) === t) return sorted[i];
+  }
+  return null;
+}
+
 // "이번 주" = sessions에 오늘이 포함된 주차, 없으면 마지막 주차
 export function currentWeek(weeks, today = new Date()) {
   const sorted = sortWeeks(weeks);
@@ -188,8 +215,9 @@ export function triState(map, id) {
 // - 학원 blob: mathDates = ["YYYY-MM-DD", ...] (선생님이 추가한 수학 수업 날짜 목록)
 // - 학생 blob: mathHomework = { "YYYY-MM-DD": true|null|false } (키 없음 = 안 함)
 // 보고서 귀속 규칙: 날짜 d의 체크는 'd 바로 다음에 과학 수업이 있는 주차'의 보고서에 실린다.
+// 면담·면접 주차는 과학 흐름이 아니므로 건너뛴다 (그 주차의 보고서·회차별 ②에도 실리지 않음).
 export function mathDatesForWeek(weeks, mathDates, weekId) {
-  const sorted = sortWeeks(weeks).filter((w) => (w.sessions || []).length);
+  const sorted = sortWeeks(weeks).filter((w) => weekType(w) === "science" && (w.sessions || []).length);
   const idx = sorted.findIndex((w) => w.id === weekId);
   if (idx < 0) return [];
   const start = sorted[idx].sessions[0];
@@ -227,9 +255,9 @@ export function dispMax(quiz) {
   return quiz?.half ? m / 2 : m;
 }
 
-// 카톡 공유용 숙제 목록 텍스트 (관리자/학생 공용)
+// 카톡 공유용 숙제 목록 텍스트 (관리자/학생 공용) — 과학/면담/면접 종류를 제목에 반영
 export function homeworkShareText(academyName, week) {
-  const lines = [`📌 [${academyName}] ${week.label} 과학 숙제`];
+  const lines = [`📌 [${academyName}] ${week.label} ${WEEK_TYPES[weekType(week)]} 숙제`];
   const items = week.homework || [];
   if (!items.length) {
     lines.push("(등록된 숙제가 없습니다)");
