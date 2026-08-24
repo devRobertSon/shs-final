@@ -159,7 +159,8 @@ export function isoWeekId(date) {
 // ---------- 단원별 퀴즈 ----------
 // 학원 blob: quizzes[] = {id, unit(단원명), weekId(응시 주차), max(만점), stats:{avg,count}|null}
 // 학생 blob: quizzes = {퀴즈ID: 점수}, quizzesNoClass = {퀴즈ID: true} → 미수강 응시(점수 기록·평균 제외),
-//            quizReports = {퀴즈ID: {pdf?:{path,origName,size,mime}, note?:string}}
+//            quizReports = {퀴즈ID: {pdf?:{path,origName,size,mime}, note?:string}} — 단원(퀴즈) 리포트
+//            weekReports = {주차ID: {pdf?, note?}} — 수업 리포트 (퀴즈 없는 면담·면접 수업 포함, 형식 동일)
 // 한 주차에 여러 단원 퀴즈가 있을 수 있다. 정렬은 응시 주차 순 → 같은 주차는 등록 순.
 export function sortQuizzes(quizzes, weeks) {
   const order = new Map(sortWeeks(weeks).map((w, i) => [w.id, i]));

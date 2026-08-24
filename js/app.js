@@ -262,9 +262,15 @@ function newsIdSets() {
   return {
     notice: (academy.notices || []).map((n) => String(n.id)),
     quiz: Object.keys(student.quizzes || {}),
-    report: Object.entries(student.quizReports || {})
-      .filter(([, r]) => r && (r.pdf || r.note))
-      .map(([id]) => id),
+    report: [
+      ...Object.entries(student.quizReports || {})
+        .filter(([, r]) => r && (r.pdf || r.note))
+        .map(([id]) => id),
+      // 수업 리포트 — 주차 id와 퀴즈 id가 겹치지 않게 접두어를 붙여 저장
+      ...Object.entries(student.weekReports || {})
+        .filter(([, r]) => r && (r.pdf || r.note))
+        .map(([id]) => `w:${id}`),
+    ],
   };
 }
 function loadSeen() {
@@ -587,36 +593,64 @@ function fileRow({ title, metaText, entry, key }) {
 }
 
 // ---------- ③ 리포트 (단원별) ----------
+// 수업(주차) 최신순 — 수업 리포트(weekReports, 면담·면접 포함)와
+// 그 수업 퀴즈의 단원 리포트(quizReports)를 한 목록으로 보여준다.
 function renderReport(container) {
   const { student, academy } = session;
   const quizzes = sortQuizzes(academy.quizzes, academy.weeks);
-  const reports = student.quizReports || {};
-  const card = el("div", { class: "card" }, [el("h2", { text: "단원별 리포트" })]);
-  const withReport = [...quizzes]
-    .reverse()
-    .filter((q) => reports[q.id] && (reports[q.id].pdf || reports[q.id].note));
-  if (!withReport.length) {
+  const qReports = student.quizReports || {};
+  const wReports = student.weekReports || {};
+  const card = el("div", { class: "card" }, [el("h2", { text: "개별 리포트" })]);
+  const has = (rep) => rep && (rep.pdf || rep.note);
+  const weeks = sortWeeks(academy.weeks);
+  const items = []; // {title, sub, rep, pdfTitle}
+  for (const w of [...weeks].reverse()) {
+    if (has(wReports[w.id])) {
+      items.push({
+        title: shortLabel(weekDisplayLabel(w)),
+        sub: "수업 리포트",
+        rep: wReports[w.id],
+        pdfTitle: "📊 리포트 파일",
+      });
+    }
+    for (const q of quizzes.filter((x) => x.weekId === w.id)) {
+      if (has(qReports[q.id])) {
+        items.push({
+          title: q.unit,
+          sub: shortLabel(weekDisplayLabel(w)),
+          rep: qReports[q.id],
+          pdfTitle: "📊 퀴즈 분석 리포트",
+        });
+      }
+    }
+  }
+  // 주차가 없는(미정) 퀴즈의 리포트는 맨 아래
+  for (const q of [...quizzes].reverse().filter((x) => !weeks.some((w) => w.id === x.weekId))) {
+    if (has(qReports[q.id])) {
+      items.push({ title: q.unit, sub: "주차 미정", rep: qReports[q.id], pdfTitle: "📊 퀴즈 분석 리포트" });
+    }
+  }
+  if (!items.length) {
     card.appendChild(el("p", { class: "empty", text: "아직 작성된 리포트가 없습니다." }));
   } else {
-    for (const q of withReport) {
-      const rep = reports[q.id];
+    for (const it of items) {
       const sec = el("div", { class: "unit-report" }, [
         el("div", { class: "unit-title" }, [
-          el("span", { text: q.unit }),
-          el("span", { class: "unit-week", text: shortLabel(weekLabelOf(academy.weeks, q.weekId)) || "주차 미정" }),
+          el("span", { text: it.title }),
+          el("span", { class: "unit-week", text: it.sub }),
         ]),
       ]);
-      if (rep.pdf) {
+      if (it.rep.pdf) {
         sec.appendChild(
           fileRow({
-            title: "📊 퀴즈 분석 리포트",
-            metaText: [rep.pdf.origName, formatBytes(rep.pdf.size)].filter(Boolean).join(" · "),
-            entry: rep.pdf,
+            title: it.pdfTitle,
+            metaText: [it.rep.pdf.origName, formatBytes(it.rep.pdf.size)].filter(Boolean).join(" · "),
+            entry: it.rep.pdf,
             key: session.studentKey,
           })
         );
       }
-      if (rep.note) sec.appendChild(mdBlock(rep.note, "report-body md-body"));
+      if (it.rep.note) sec.appendChild(mdBlock(it.rep.note, "report-body md-body"));
       card.appendChild(sec);
     }
   }
@@ -1075,12 +1109,28 @@ function renderTeacherMathHomework(container) {
 }
 
 // ---------- 개별 리포트 열람 (전달사항 + PDF 유무) ----------
+// 수업(주차) 최신순 — 수업 리포트 카드 다음에 그 수업 퀴즈의 단원 리포트 카드.
 function renderTeacherReports(container) {
   const { teacher, academy } = session;
   const quizzes = sortQuizzes(academy.quizzes, academy.weeks);
   const reports = teacher.snapshot?.reports || {};
-  const withReports = [...quizzes].reverse().filter((q) => (reports[q.id] || []).length);
-  if (!withReports.length) {
+  const wReports = teacher.snapshot?.weekReports || {};
+  const weeks = sortWeeks(academy.weeks);
+  const cards = []; // {title, sub, rows}
+  for (const w of [...weeks].reverse()) {
+    if ((wReports[w.id] || []).length) {
+      cards.push({ title: shortLabel(weekDisplayLabel(w)), sub: "수업 리포트", rows: wReports[w.id] });
+    }
+    for (const q of quizzes.filter((x) => x.weekId === w.id)) {
+      if ((reports[q.id] || []).length) {
+        cards.push({ title: q.unit, sub: shortLabel(weekDisplayLabel(w)), rows: reports[q.id] });
+      }
+    }
+  }
+  for (const q of [...quizzes].reverse().filter((x) => !weeks.some((w) => w.id === x.weekId))) {
+    if ((reports[q.id] || []).length) cards.push({ title: q.unit, sub: "주차 미정", rows: reports[q.id] });
+  }
+  if (!cards.length) {
     container.appendChild(
       el("div", { class: "card" }, [
         el("h2", { text: "개별 리포트" }),
@@ -1095,14 +1145,14 @@ function renderTeacherReports(container) {
       text: "학생별 전달사항 전문과 분석 PDF 첨부 여부입니다. (PDF 원본은 관리 페이지에서 발행한 파일입니다)",
     })
   );
-  for (const q of withReports) {
+  for (const c of cards) {
     const card = el("div", { class: "card" }, [
       el("div", { class: "unit-title" }, [
-        el("span", { text: q.unit }),
-        el("span", { class: "unit-week", text: shortLabel(weekLabelOf(academy.weeks, q.weekId)) }),
+        el("span", { text: c.title }),
+        el("span", { class: "unit-week", text: c.sub }),
       ]),
     ]);
-    for (const r of reports[q.id]) {
+    for (const r of c.rows) {
       card.appendChild(
         el("div", { class: "t-report" }, [
           el("div", { class: "t-report-head" }, [

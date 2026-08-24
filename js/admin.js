@@ -41,7 +41,7 @@ const S = {
   // UI 상태
   selAcademy: null,
   selWeek: new Map(), // academyFileId -> weekId
-  selQuiz: new Map(), // academyFileId -> quizId
+  selReport: new Map(), // academyFileId -> 리포트 대상 ("" = 수업 리포트 / 그 수업 퀴즈의 id)
   zipDownloaded: false,
   // 이 세션이 불러왔거나 스스로 만든 발행 시각들 — 발행 직전에 사이트의 발행 시각이
   // 여기 없으면 다른 탭/기기의 발행을 덮어쓰는 상황이므로 경고한다
@@ -605,48 +605,6 @@ function academyQuizzes(fileId = S.selAcademy) {
   return sortQuizzes(blob.quizzes, blob.weeks);
 }
 
-function selectedQuiz() {
-  const list = academyQuizzes();
-  if (!list.length) return null;
-  const qid = S.selQuiz.get(S.selAcademy);
-  return list.find((q) => q.id === qid) || list[list.length - 1];
-}
-
-function quizOptionLabel(q) {
-  const wl = weekLabelOf(academyBlob()?.weeks, q.weekId).replace(/\s*\(.*\)\s*/, "");
-  return `${q.unit} — ${wl || "주차 미정"}`;
-}
-
-// 학원 + 퀴즈(단원) 선택 툴바
-function quizToolbar(container) {
-  const bar = el("div", { class: "toolbar" });
-  const aSel = el("select", { "aria-label": "학원 선택" });
-  for (const a of S.roster.academies) {
-    aSel.appendChild(el("option", { value: a.fileId, text: a.name, selected: a.fileId === S.selAcademy }));
-  }
-  aSel.addEventListener("change", () => {
-    S.selAcademy = aSel.value;
-    renderTab();
-  });
-  bar.appendChild(aSel);
-
-  const qSel = el("select", { "aria-label": "퀴즈(단원) 선택" });
-  const list = academyQuizzes();
-  const cur = selectedQuiz();
-  for (const q of list) {
-    qSel.appendChild(el("option", { value: q.id, text: quizOptionLabel(q), selected: cur && q.id === cur.id }));
-  }
-  if (!list.length) qSel.appendChild(el("option", { text: "퀴즈 없음", value: "" }));
-  qSel.addEventListener("change", () => {
-    S.selQuiz.set(S.selAcademy, qSel.value);
-    renderTab();
-  });
-  bar.appendChild(qSel);
-  bar.appendChild(el("button", { class: "btn btn-small", text: "+ 새 퀴즈", onclick: () => editQuiz(null) }));
-  if (cur) bar.appendChild(el("button", { class: "btn btn-small", text: "퀴즈 관리", onclick: () => editQuiz(cur) }));
-  container.appendChild(bar);
-}
-
 // 같은 퀴즈(단원명·주차·만점)를 다른 학원들에도 만든다.
 // weekId가 null이면 '주차 미정' 상태로 만든다 (주차 생성 불필요).
 // 주차가 정해진 경우, 대상 학원에 같은 주차(id)가 없으면 주차도 함께 만든다 (수업일은 비워 둠).
@@ -793,7 +751,6 @@ function editQuiz(quiz) {
               const q = { id: randomHexId(6), unit, weekId, max, ...(halfChk.checked ? { half: true } : {}), stats: null };
               blob.quizzes = blob.quizzes || [];
               blob.quizzes.push(q);
-              S.selQuiz.set(S.selAcademy, q.id);
               markDroppedForNewQuiz(S.selAcademy, q.id);
               markAcademy(S.selAcademy);
               if (multiAcademy && allChk.checked) {
@@ -1004,12 +961,24 @@ function manageWeeks() {
             onclick: async () => {
               const ok = await confirmModal({
                 title: "주차 삭제",
-                body: `'${w.label}'을(를) 삭제할까요? 이 주차의 숙제·점수 표시가 사라집니다. (학생 데이터 자체는 남아 있습니다)`,
+                body: `'${w.label}'을(를) 삭제할까요? 이 주차의 숙제·점수 표시와 수업 리포트(PDF 포함)가 사라집니다. (그 외 학생 데이터 자체는 남아 있습니다)`,
                 okText: "삭제",
                 danger: true,
               });
               if (!ok) return;
               blob.weeks = blob.weeks.filter((x) => x.id !== w.id);
+              // 이 주차의 수업 리포트 정리 (PDF 파일 삭제 예약 포함)
+              for (const st of S.roster.students.filter((s) => s.academyFileId === S.selAcademy)) {
+                const sb = S.students.get(st.fileId);
+                const rep = sb?.weekReports?.[w.id];
+                if (!rep) continue;
+                if (rep.pdf) {
+                  if (S.pendingUploads.has(rep.pdf.path)) S.pendingUploads.delete(rep.pdf.path);
+                  else S.pendingDeletes.add(rep.pdf.path);
+                }
+                delete sb.weekReports[w.id];
+                markStudent(st.fileId);
+              }
               normalizeWeekIds(S.selAcademy); // 삭제로 빈 번호가 남지 않게 당겨서 재정렬
               selId = null; // 최신 주차로 되돌아감
               markAcademy(S.selAcademy);
@@ -1259,10 +1228,10 @@ async function reissueCode(st) {
     const oldFileId = st.fileId;
     const oldKey = await importAesKeyB64(st.encKey);
 
-    // 1) gather: 이 학생의 모든 단원 리포트 PDF 평문을 먼저 확보 —
+    // 1) gather: 이 학생의 모든 리포트 PDF(단원+수업) 평문을 먼저 확보 —
     //    하나라도 실패하면 아무것도 바꾸지 않는다 (구 키 유실 방지)
     const gathered = [];
-    for (const rep of Object.values(blob.quizReports || {})) {
+    for (const rep of [...Object.values(blob.quizReports || {}), ...Object.values(blob.weekReports || {})]) {
       const pdf = rep.pdf;
       if (!pdf) continue;
       const pending = S.pendingUploads.get(pdf.path);
@@ -1326,10 +1295,11 @@ async function deleteStudent(st) {
   try {
     const academyFileId = st.academyFileId;
     // 이 학생의 분석 PDF 정리 (blob 제거 전에 경로를 확보해야 함)
-    // 단원 리포트 PDF + 구(주차별) 리포트 PDF 모두 정리
+    // 단원 리포트 + 수업 리포트 + 구(주차별) 리포트 PDF 모두 정리
     const blob = S.students.get(st.fileId);
     const pdfPaths = [
       ...Object.values(blob?.quizReports || {}).map((r) => r.pdf?.path),
+      ...Object.values(blob?.weekReports || {}).map((r) => r.pdf?.path),
       ...Object.values(blob?.weeks || {}).map((wd) => wd.reportPdf?.path),
     ].filter(Boolean);
     for (const p of pdfPaths) {
@@ -2254,17 +2224,50 @@ function attendanceCard(week, { title = "출석 체크" } = {}) {
   return card;
 }
 
-// ---------- ⑤ 리포트 (단원별) ----------
+// ---------- ⑤ 리포트 (수업별 — 퀴즈 연결 선택) ----------
+// 리포트는 수업(주차)에 붙는다. 그 수업에 퀴즈가 있으면 퀴즈를 골라 단원 리포트를,
+// '수업 리포트'를 골라 수업 자체(면담·면접 포함)에 대한 리포트를 학생별로 쓴다.
+// 저장 위치: 퀴즈 연결 → student.quizReports[quizId] (기존 형식 그대로) /
+//           수업 리포트 → student.weekReports[weekId] — 둘 다 {note?, pdf?}
 function renderReportsTab(container) {
-  quizToolbar(container);
-  const quiz = selectedQuiz();
-  const card = el("div", { class: "card" }, [el("h2", { text: "단원 리포트 작성" })]);
-  if (!quiz) {
-    card.appendChild(el("p", { class: "empty", text: "'+ 새 퀴즈'로 단원 퀴즈를 먼저 만들어 주세요." }));
+  toolbar(container);
+  const week = selectedWeek();
+  const card = el("div", { class: "card" }, [el("h2", { text: "개별 리포트 작성" })]);
+  if (!week) {
+    card.appendChild(el("p", { class: "empty", text: "'주차 관리'에서 먼저 주차를 만들어 주세요." }));
     container.appendChild(card);
     return;
   }
-  card.appendChild(el("p", { class: "hint", text: `단원: ${quiz.unit} · 응시 주차: ${weekLabelOf(academyBlob().weeks, quiz.weekId) || "미정"}` }));
+  const weekQuizzes = sortQuizzes(
+    (academyBlob().quizzes || []).filter((q) => q.weekId === week.id),
+    academyBlob().weeks
+  );
+  // 대상: 저장된 선택이 이 수업에 유효하면 유지, 아니면 퀴즈(있으면) → 수업 리포트 순 기본값
+  let target = S.selReport.get(S.selAcademy);
+  if (!(target === "" || weekQuizzes.some((q) => q.id === target))) {
+    target = weekQuizzes.length ? weekQuizzes[0].id : "";
+  }
+  const quiz = target ? weekQuizzes.find((q) => q.id === target) : null;
+
+  const tSel = el("select", { "aria-label": "리포트 대상 선택" });
+  tSel.appendChild(el("option", { value: "", text: "수업 리포트 (퀴즈 연결 없음)", selected: !quiz }));
+  for (const q of weekQuizzes) {
+    tSel.appendChild(el("option", { value: q.id, text: `퀴즈: ${q.unit}`, selected: !!quiz && q.id === quiz.id }));
+  }
+  tSel.addEventListener("change", () => {
+    S.selReport.set(S.selAcademy, tSel.value);
+    renderTab();
+  });
+  card.appendChild(el("div", { class: "toolbar" }, [tSel]));
+  card.appendChild(
+    el("p", {
+      class: "hint",
+      text: quiz
+        ? `단원: ${quiz.unit} · 수업: ${weekDisplayLabel(week)}`
+        : `수업: ${weekDisplayLabel(week)} — 이 수업 자체에 대한 학생별 리포트입니다.` +
+          (weekQuizzes.length ? "" : " (이 수업에 등록된 퀴즈 없음)"),
+    })
+  );
   const students = activeStudentsOf(S.selAcademy);
   if (!students.length) {
     card.appendChild(el("p", { class: "empty", text: "학생이 없습니다." }));
@@ -2277,27 +2280,39 @@ function renderReportsTab(container) {
   const ta = el("textarea", {
     rows: "6",
     placeholder:
-      "이 단원에 대해 학생/학부모에게 전달할 사항을 적어 주세요.\n" +
-      "마크다운 사용 가능: **굵게**, - 목록, 1. 번호 목록, [이름](https://링크), # 제목",
+      (quiz ? "이 단원" : "이 수업") +
+      "에 대해 학생/학부모에게 전달할 사항을 적어 주세요.\n" +
+      "마크다운 사용 가능: **굵게**, - 목록, 1. 번호 목록, [이름](https://링크), # 제목\n" +
+      "면담 결과 등 개별 링크는 [면담 결과 보기](https://주소) 형식으로 넣으면 클릭됩니다.",
   });
 
+  // 이 대상의 리포트 저장 맵 + 키 (퀴즈 연결 여부에 따라 달라진다)
+  const repKey = quiz ? quiz.id : week.id;
+  const repMapOf = (blob) => {
+    if (quiz) {
+      blob.quizReports = blob.quizReports || {};
+      return blob.quizReports;
+    }
+    blob.weekReports = blob.weekReports || {};
+    return blob.weekReports;
+  };
+  const repOf = (st) => repMapOf(S.students.get(st.fileId))[repKey];
   const ensureRep = (st) => {
-    const blob = S.students.get(st.fileId);
-    blob.quizReports = blob.quizReports || {};
-    blob.quizReports[quiz.id] = blob.quizReports[quiz.id] || {};
-    return blob.quizReports[quiz.id];
+    const map = repMapOf(S.students.get(st.fileId));
+    map[repKey] = map[repKey] || {};
+    return map[repKey];
   };
   const cleanupRep = (st) => {
-    const blob = S.students.get(st.fileId);
-    const rep = blob.quizReports?.[quiz.id];
-    if (rep && !rep.pdf && !rep.note) delete blob.quizReports[quiz.id];
+    const map = repMapOf(S.students.get(st.fileId));
+    const rep = map[repKey];
+    if (rep && !rep.pdf && !rep.note) delete map[repKey];
   };
 
-  // ---- 퀴즈 분석 PDF (학생 본인 키로 암호화 — 그 학생 코드로만 열림) ----
+  // ---- 분석 PDF (학생 본인 키로 암호화 — 그 학생 코드로만 열림) ----
   const pdfBox = el("div");
 
   const removePdf = (st) => {
-    const rep = S.students.get(st.fileId).quizReports?.[quiz.id];
+    const rep = repOf(st);
     const pdf = rep?.pdf;
     if (!pdf) return;
     if (S.pendingUploads.has(pdf.path)) S.pendingUploads.delete(pdf.path);
@@ -2310,7 +2325,7 @@ function renderReportsTab(container) {
   const renderPdf = () => {
     clear(pdfBox);
     const st = students[idx];
-    const pdf = S.students.get(st.fileId).quizReports?.[quiz.id]?.pdf;
+    const pdf = repOf(st)?.pdf;
     if (pdf) {
       pdfBox.appendChild(
         el("div", { class: "material" }, [
@@ -2373,18 +2388,18 @@ function renderReportsTab(container) {
   const load = () => {
     const st = students[idx];
     who.textContent = `${st.name} (${idx + 1}/${students.length})`;
-    ta.value = S.students.get(st.fileId)?.quizReports?.[quiz.id]?.note || "";
+    ta.value = repOf(st)?.note || "";
     count.textContent = `${ta.value.length}자`;
     renderPdf();
   };
   const save = () => {
     const st = students[idx];
-    const cur = S.students.get(st.fileId).quizReports?.[quiz.id]?.note || "";
+    const cur = repOf(st)?.note || "";
     const next = ta.value;
     if (cur !== next) {
       if (next) ensureRep(st).note = next;
       else {
-        const rep = S.students.get(st.fileId).quizReports?.[quiz.id];
+        const rep = repOf(st);
         if (rep) delete rep.note;
         cleanupRep(st);
       }
@@ -2419,7 +2434,7 @@ function renderReportsTab(container) {
       }),
     ])
   );
-  card.appendChild(el("h3", { text: "퀴즈 분석 PDF", style: "font-size:15px;margin-top:8px" }));
+  card.appendChild(el("h3", { text: quiz ? "퀴즈 분석 PDF" : "리포트 PDF", style: "font-size:15px;margin-top:8px" }));
   card.appendChild(
     el("p", { class: "hint", text: "이 학생의 접속 코드로만 열리도록 개별 암호화되어 올라갑니다." })
   );
@@ -3095,11 +3110,10 @@ function buildTeacherSnapshot(academyFileId) {
     byDate: { ...(S.students.get(st.fileId)?.mathHomework || {}) },
   }));
   // 개별 리포트: 전달사항 텍스트 + 분석 PDF 유무(파일명만 — 파일 자체는 학생 키 암호화라 포함하지 않음)
-  const reports = {};
-  for (const q of aBlob.quizzes || []) {
+  const reportRows = (repOf) => {
     const rows = [];
     for (const st of students) {
-      const rep = S.students.get(st.fileId)?.quizReports?.[q.id];
+      const rep = repOf(st);
       if (!rep || (!rep.note && !rep.pdf)) continue;
       rows.push({
         name: st.name,
@@ -3107,9 +3121,19 @@ function buildTeacherSnapshot(academyFileId) {
         ...(rep.pdf ? { pdfName: rep.pdf.origName } : {}),
       });
     }
+    return rows;
+  };
+  const reports = {}; // 단원(퀴즈) 리포트
+  for (const q of aBlob.quizzes || []) {
+    const rows = reportRows((st) => S.students.get(st.fileId)?.quizReports?.[q.id]);
     if (rows.length) reports[q.id] = rows;
   }
-  return { attendance, scores, homework, reports, math };
+  const weekReports = {}; // 수업 리포트 (면담·면접 포함)
+  for (const w of aBlob.weeks || []) {
+    const rows = reportRows((st) => S.students.get(st.fileId)?.weekReports?.[w.id]);
+    if (rows.length) weekReports[w.id] = rows;
+  }
+  return { attendance, scores, homework, reports, weekReports, math };
 }
 
 // mode: "api" → 변경분만(base64) + 삭제 목록 / "zip" → 전체 파일(bytes)
