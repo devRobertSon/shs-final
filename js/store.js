@@ -214,7 +214,17 @@ export function triState(map, id) {
 // 수학 숙제: 수학 수업 '날짜'마다 학생별 1칸 — 수학 수업일은 과학 수업일과 다르고
 // 한 주에 여러 번일 수 있다.
 // - 학원 blob: mathDates = ["YYYY-MM-DD", ...] (선생님이 추가한 수학 수업 날짜 목록)
-// - 학생 blob: mathHomework = { "YYYY-MM-DD": true|null|false } (키 없음 = 안 함)
+//              mathTotals = { "YYYY-MM-DD": 전체 문제 수 } (날짜별, 없으면 미설정)
+// - 학생 blob: mathHomework = { "YYYY-MM-DD": 값 } — 값의 의미:
+//     숫자 n = n문제 해옴 / 키 없음 = X 안 해옴 / null = ◌ 확인 전 / false = － 해당 없음
+//     true = (구형식) 했음 — 문제 수 도입 전 데이터, 전체를 다 한 것으로 취급해 표시
+export function mathCell(map, date) {
+  if (!map || !(date in map)) return { kind: "none" };
+  const v = map[date];
+  if (typeof v === "number") return { kind: "num", n: v };
+  return v === true ? { kind: "done" } : v === null ? { kind: "hold" } : { kind: "na" };
+}
+
 // 보고서 귀속 규칙: 날짜 d의 체크는 'd 바로 다음에 과학 수업이 있는 주차'의 보고서에 실린다.
 // 면담·면접 주차는 과학 흐름이 아니므로 건너뛴다 (그 주차의 보고서·회차별 ②에도 실리지 않음).
 export function mathDatesForWeek(weeks, mathDates, weekId) {

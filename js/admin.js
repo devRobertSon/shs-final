@@ -17,7 +17,7 @@ import {
   normalizePassword,
   b64encode,
 } from "./crypto.js";
-import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, isoWeekIdAfter, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER, isNoShow, isNA, triState, mathDatesForWeek, WEEK_TYPES, weekType, weekDisplayLabel, prevWeekOfType } from "./store.js";
+import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, isoWeekIdAfter, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER, isNoShow, isNA, triState, mathCell, mathDatesForWeek, WEEK_TYPES, weekType, weekDisplayLabel, prevWeekOfType } from "./store.js";
 import { $, el, clear, toast, confirmModal, copyText, setBusy, mdBlock } from "./ui.js";
 import { runWizard, createStudent, emptyStudentBlob, emptyAcademyBlob, printCodeCards } from "./setup.js";
 import { buildDirectorReport } from "./report.js";
@@ -1795,28 +1795,46 @@ function mathHomeworkCard({ dates = null, title = "수학 숙제 체크", manage
     return card;
   }
   const fmtD = (d) => d.slice(5).replace("-", "/");
-  const applyBtn = (btn, state) => {
-    btn.classList.toggle("on", state === "done");
-    btn.classList.toggle("hold", state === "hold");
-    btn.classList.toggle("na", state === "na");
-    btn.textContent = state === "done" ? "✓" : state === "hold" ? "◌" : state === "na" ? "－" : "";
-  };
+  blob.mathTotals = blob.mathTotals || {};
+
+  // 셀 = [해온 문제 수 입력(빈칸 = X 안 해옴)] + [◌/－ 상태 버튼]
   const tbl = el("table", { class: "grid", style: "margin-top:4px" });
   const header = el("tr", {}, [el("th", { class: "name-cell", text: "이름" })]);
   for (const d of shown) {
+    const totalIn = el("input", {
+      type: "number",
+      class: "math-total",
+      min: "1",
+      value: blob.mathTotals[d] != null ? String(blob.mathTotals[d]) : "",
+      placeholder: "문제 수",
+      "aria-label": `${fmtD(d)} 전체 문제 수`,
+      onchange: () => {
+        const n = parseInt(totalIn.value, 10);
+        if (n > 0) blob.mathTotals[d] = n;
+        else {
+          delete blob.mathTotals[d];
+          totalIn.value = "";
+        }
+        // 다시 그리지 않는다 — 입력 중 포커스 유지 (표시 기준은 학생 화면·보고서에서만 쓰인다)
+        markAcademy(S.selAcademy);
+      },
+    });
     header.appendChild(
       el("th", {}, [
         el("div", { text: fmtD(d) }),
+        el("div", {}, [totalIn]),
         el("button", {
           class: "btn btn-small",
-          text: "전체 ✓",
+          text: "전체 다 함",
           onclick: () => {
+            const T = blob.mathTotals[d];
+            if (!T) return toast("먼저 위 칸에 전체 문제 수를 입력해 주세요.", "error");
             for (const st of students) {
               const sb = S.students.get(st.fileId);
               sb.mathHomework = sb.mathHomework || {};
-              // 확인 전(◌)·해당 없음(－)은 전체 완료로 덮어쓰지 않는다
-              if (triState(sb.mathHomework, d) === "none") {
-                sb.mathHomework[d] = true;
+              // 확인 전(◌)·해당 없음(－)·이미 적힌 숫자는 덮어쓰지 않는다
+              if (mathCell(sb.mathHomework, d).kind === "none") {
+                sb.mathHomework[d] = T;
                 markStudent(st.fileId);
               }
             }
@@ -1837,6 +1855,7 @@ function mathHomeworkCard({ dates = null, title = "수학 숙제 체크", manage
                 });
                 if (!ok) return;
                 blob.mathDates = blob.mathDates.filter((x) => x !== d);
+                delete blob.mathTotals[d];
                 for (const st of activeStudentsOf(S.selAcademy)) {
                   const sb = S.students.get(st.fileId);
                   if (sb?.mathHomework && d in sb.mathHomework) {
@@ -1857,21 +1876,43 @@ function mathHomeworkCard({ dates = null, title = "수학 숙제 체크", manage
     const sb = S.students.get(st.fileId);
     const row = el("tr", {}, [el("td", { class: "name-cell", text: st.name })]);
     for (const d of shown) {
-      const btn = el("button", {
-        class: "cell-toggle",
-        onclick: () => {
-          sb.mathHomework = sb.mathHomework || {};
-          const cur = triState(sb.mathHomework, d);
-          if (cur === "none") sb.mathHomework[d] = true;
-          else if (cur === "done") sb.mathHomework[d] = null; // 확인 전(결석)
-          else if (cur === "hold") sb.mathHomework[d] = false; // 해당 없음(수강 전·드랍 등)
-          else delete sb.mathHomework[d];
-          applyBtn(btn, triState(sb.mathHomework, d));
-          markStudent(st.fileId);
-        },
+      const numIn = el("input", {
+        type: "number",
+        class: "math-num",
+        min: "0",
+        placeholder: "X",
+        "aria-label": `${st.name} ${fmtD(d)} 해온 문제 수`,
       });
-      applyBtn(btn, triState(sb?.mathHomework, d));
-      row.appendChild(el("td", {}, [btn]));
+      const stateBtn = el("button", { class: "math-state", "aria-label": `${st.name} ${fmtD(d)} 상태 (◌/－)` });
+      const paint = () => {
+        const c = mathCell(sb?.mathHomework, d);
+        numIn.value = c.kind === "num" ? String(c.n) : "";
+        numIn.disabled = c.kind === "hold" || c.kind === "na" || c.kind === "done";
+        stateBtn.textContent = c.kind === "hold" ? "◌" : c.kind === "na" ? "－" : c.kind === "done" ? "✓" : "";
+        stateBtn.classList.toggle("hold", c.kind === "hold");
+        stateBtn.classList.toggle("na", c.kind === "na");
+        stateBtn.classList.toggle("on", c.kind === "done");
+      };
+      numIn.addEventListener("change", () => {
+        sb.mathHomework = sb.mathHomework || {};
+        const n = parseInt(numIn.value, 10);
+        if (Number.isFinite(n) && n >= 0) sb.mathHomework[d] = n;
+        else delete sb.mathHomework[d]; // 빈칸 = X 안 해옴
+        paint();
+        markStudent(st.fileId);
+      });
+      // ◌ 확인 전 → － 해당 없음 → 빈칸(X) 순환. 구형식 ✓(했음)도 눌러서 바꿀 수 있다.
+      stateBtn.addEventListener("click", () => {
+        sb.mathHomework = sb.mathHomework || {};
+        const k = mathCell(sb.mathHomework, d).kind;
+        if (k === "hold") sb.mathHomework[d] = false;
+        else if (k === "na") delete sb.mathHomework[d];
+        else sb.mathHomework[d] = null;
+        paint();
+        markStudent(st.fileId);
+      });
+      paint();
+      row.appendChild(el("td", {}, [el("div", { class: "math-cell" }, [numIn, stateBtn])]));
     }
     tbl.appendChild(row);
   }
@@ -1880,8 +1921,9 @@ function mathHomeworkCard({ dates = null, title = "수학 숙제 체크", manage
     el("p", {
       class: "hint",
       text:
-        "칸을 누를 때마다 ✓ 했음 → ◌ 확인 전(결석 등) → － 해당 없음(수강 전·드랍 등) → 빈칸(안 함) 순으로 바뀝니다. " +
-        "각 날짜의 체크는 그 날짜 바로 다음 과학 수업 주차의 보고서에 실립니다.",
+        "날짜 아래 '문제 수' 칸에 그 회차의 전체 문제 수를 적고, 학생 칸에는 해온 문제 수를 적습니다 " +
+        "(빈칸 = X 안 해옴). 옆의 작은 버튼은 ◌ 확인 전(결석 등) → － 해당 없음(수강 전·드랍 등) → 빈칸 순으로 바뀝니다. " +
+        "✓는 문제 수 도입 전의 '했음' 기록입니다. 각 날짜의 체크는 그 날짜 바로 다음 과학 수업 주차의 보고서에 실립니다.",
     })
   );
   return card;
@@ -2650,6 +2692,7 @@ function renderDirectorTab(container) {
     })),
     notices: academyBlob().notices,
     mathDates: academyBlob().mathDates || [],
+    mathTotals: academyBlob().mathTotals || {},
     teacherName: S.roster.teacher?.name,
     dirty: dirtyCount() > 0,
   });

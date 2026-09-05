@@ -85,6 +85,65 @@ button.cell-toggle.na {
   color: #52514e;
   font-weight: 700;
 }
+/* 수학 숙제 셀 — [해온 문제 수 입력] + [◌/－ 상태 버튼] */
+.math-cell {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+}
+td .math-num {
+  min-height: 34px;
+  width: 56px;
+  padding: 4px 4px;
+  text-align: center;
+  font-size: 14px;
+  border-radius: 6px;
+}
+td .math-num::placeholder {
+  color: var(--muted);
+  font-weight: 700;
+}
+button.math-state {
+  min-width: 30px;
+  min-height: 34px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 14px;
+  cursor: pointer;
+  font-family: inherit;
+}
+button.math-state.on {
+  background: #effaef;
+  border-color: #bfe6bf;
+  color: var(--good-text);
+  font-weight: 700;
+}
+button.math-state.hold {
+  background: var(--warn-wash);
+  border-color: #ecd9a6;
+  color: #7a5b00;
+  font-weight: 700;
+}
+button.math-state.na {
+  background: #efeeea;
+  border-color: #b7b5ac;
+  color: #52514e;
+  font-weight: 700;
+}
+/* 날짜별 전체 문제 수 입력 (열 머리) */
+th .math-total {
+  min-height: 30px;
+  width: 68px;
+  padding: 2px 4px;
+  margin: 2px 0;
+  text-align: center;
+  font-size: 13px;
+  border-radius: 6px;
+  font-weight: 400;
+}
+
 /* 숙제 체크 표의 주차 출석 열 */
 td.hw-att {
   font-size: 12px;
