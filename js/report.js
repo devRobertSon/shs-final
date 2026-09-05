@@ -2,12 +2,13 @@
 // 보고서는 브라우저 메모리에서만 만들어지고 인쇄(PDF 저장)로만 나간다.
 // 저장소에는 절대 커밋되지 않는다 (실명·점수 포함).
 import { el, mdBlock } from "./ui.js";
-import { sortWeeks, sortQuizzes, ATTENDANCE, ATTENDANCE_ORDER, toYMD, isNoShow, isNA, triState, mathDatesForWeek, dispScore, dispMax, prevWeekOfType, weekDisplayLabel } from "./store.js";
+import { sortWeeks, sortQuizzes, ATTENDANCE, ATTENDANCE_ORDER, toYMD, isNoShow, isNA, mathCell, mathDatesForWeek, dispScore, dispMax, prevWeekOfType, weekDisplayLabel } from "./store.js";
 
 // 입력:
 //   academyName, weeks(학원 blob), quizzes(학원 blob의 단원 퀴즈 목록),
 //   weekId(보고 대상 주차 W), students: [{name, blob}] (활성 학생),
 //   notices(학원 blob), mathDates(학원 blob의 수학 수업 날짜 목록),
+//   mathTotals(학원 blob의 날짜별 전체 문제 수),
 //   teacherName, dirty(발행 안 된 변경 존재 여부)
 // 반환: { checks: [{level:'ok'|'warn'|'info', text}], doc: HTMLElement }
 export function buildDirectorReport({
@@ -18,6 +19,7 @@ export function buildDirectorReport({
   students,
   notices,
   mathDates,
+  mathTotals,
   teacherName,
   dirty,
 }) {
@@ -130,25 +132,56 @@ export function buildDirectorReport({
     const items = P.homework || [];
     const mDates = mathDatesForWeek(weeks, mathDates, W.id);
     const fmtD = (d) => d.slice(5).replace("-", "/");
-    const mathStateOf = (s, d) => triState(s.blob.mathHomework, d);
-    const mathChip = (st) =>
-      st === "done"
-        ? el("span", { class: "rd-check", text: "✓" })
-        : st === "hold"
-          ? el("span", { class: "rd-hold", text: "◌" })
-          : st === "na"
-            ? el("span", { class: "rd-na", text: "－" })
-            : el("span", { class: "rd-dash", text: "–" });
+    // 수학 열 머리글 — 전체 문제 수가 있으면 함께 표기
+    const mathHead = (d) => `수학 ${fmtD(d)}${mathTotals?.[d] ? ` (${mathTotals[d]}문제)` : ""}`;
+    const mathChip = (s, d) => {
+      const c = mathCell(s.blob.mathHomework, d);
+      if (c.kind === "num") return el("span", { text: String(c.n) });
+      if (c.kind === "done") return el("span", { class: "rd-check", text: "✓" });
+      if (c.kind === "hold") return el("span", { class: "rd-hold", text: "◌" });
+      if (c.kind === "na") return el("span", { class: "rd-na", text: "－" });
+      // 안 해옴 — 문제 수 기반 날짜는 X, 구형식 날짜는 기존처럼 –
+      return mathTotals?.[d]
+        ? el("span", { class: "rd-noshow", text: "X" })
+        : el("span", { class: "rd-dash", text: "–" });
+    };
     const mathNote = (d) => {
-      let done = 0;
+      const T = mathTotals?.[d];
       let holds = 0;
       let nas = 0;
+      let xs = 0;
+      let dones = 0;
+      let numDone = 0;
+      let sum = 0;
+      let counted = 0;
       for (const s of students) {
-        const st = mathStateOf(s, d);
-        if (st === "done") done++;
-        else if (st === "hold") holds++;
-        else if (st === "na") nas++;
+        const c = mathCell(s.blob.mathHomework, d);
+        if (c.kind === "hold") holds++;
+        else if (c.kind === "na") nas++;
+        else if (c.kind === "none") {
+          xs++;
+          counted++;
+        } else if (c.kind === "done") {
+          dones++;
+          counted++;
+          sum += T || 0;
+        } else {
+          counted++;
+          sum += c.n;
+          if (c.n > 0) numDone++;
+        }
       }
+      if (T) {
+        const avg = counted ? Math.round((sum / counted) * 10) / 10 : 0;
+        return (
+          `수학 숙제(${fmtD(d)}) · 전체 ${T}문제 · 평균 ${avg}문제 (대상 ${counted}명)` +
+          (xs ? ` · X(안 해옴) ${xs}명` : "") +
+          (holds ? ` · ◌ 확인 전 ${holds}명` : "") +
+          (nas ? ` · － 해당 없음 ${nas}명` : "")
+        );
+      }
+      // 문제 수 미설정(구형식 날짜) — 기존과 같은 '했음 n명 / m명' 표기
+      const done = dones + numDone;
       const denom = students.length - holds - nas;
       return (
         `수학 숙제(${fmtD(d)}) · 했음 ${done}명 / ${denom}명` +
@@ -164,14 +197,14 @@ export function buildDirectorReport({
         tbl.appendChild(
           el("tr", {}, [
             el("th", { text: "이름" }),
-            ...mDates.map((d) => el("th", { text: `수학 ${fmtD(d)}` })),
+            ...mDates.map((d) => el("th", { text: mathHead(d) })),
           ])
         );
         for (const s of students) {
           tbl.appendChild(
             el("tr", {}, [
               el("td", { class: "rd-name", text: s.name }),
-              ...mDates.map((d) => el("td", {}, [mathChip(mathStateOf(s, d))])),
+              ...mDates.map((d) => el("td", {}, [mathChip(s, d)])),
             ])
           );
         }
@@ -188,7 +221,7 @@ export function buildDirectorReport({
           el("th", { text: "이름" }),
           ...items.map((_, i) => el("th", { text: `${i + 1}번` })),
           el("th", { text: "완료율" }),
-          ...mDates.map((d) => el("th", { text: `수학 ${fmtD(d)}` })),
+          ...mDates.map((d) => el("th", { text: mathHead(d) })),
         ])
       );
       let doneAll = 0;
@@ -232,7 +265,7 @@ export function buildDirectorReport({
                   ]),
               rate == null ? null : el("span", { text: `${rate}%` }),
             ]),
-            ...mDates.map((d) => el("td", {}, [mathChip(mathStateOf(s, d))])),
+            ...mDates.map((d) => el("td", {}, [mathChip(s, d)])),
           ])
         );
       }

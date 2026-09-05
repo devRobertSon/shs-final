@@ -12,6 +12,7 @@ import {
   isNoShow,
   isNA,
   triState,
+  mathCell,
   dispScore,
   dispMax,
   toYMD,
@@ -387,23 +388,39 @@ function renderMathHomework(container) {
     el("p", { class: "hint", text: "수학 수업 날짜마다 숙제를 했는지 선생님이 확인한 결과입니다. (최근 수업부터)" })
   );
   const map = student.mathHomework || {};
+  const totals = academy.mathTotals || {};
   let anyHold = false;
   let anyNA = false;
   const ul = el("ul", { class: "hw-list" });
   for (const d of dates) {
-    const st = triState(map, d);
-    if (st === "hold") anyHold = true;
-    if (st === "na") anyNA = true;
+    const c = mathCell(map, d);
+    if (c.kind === "hold") anyHold = true;
+    if (c.kind === "na") anyNA = true;
+    const T = totals[d];
+    // 문제 수 기반(숫자) — n/전체 표기, 전부 풀면 ✓. 구형식(✓/빈칸)은 기존 표기 유지.
+    const full = c.kind === "done" || (c.kind === "num" && T && c.n >= T);
+    const statusText =
+      c.kind === "num"
+        ? T
+          ? `${T}문제 중 ${c.n}문제 함`
+          : `${c.n}문제 함`
+        : c.kind === "done"
+          ? "했음"
+          : c.kind === "hold"
+            ? "확인 전"
+            : c.kind === "na"
+              ? "해당 없음"
+              : T
+                ? "안 해옴 (X)"
+                : "안 함";
+    const markText = full ? "✓" : c.kind === "num" ? String(c.n) : c.kind === "hold" ? "◌" : c.kind === "na" ? "－" : "";
     ul.appendChild(
-      el("li", { class: st === "done" ? "hw-done" : "" }, [
+      el("li", { class: full ? "hw-done" : "" }, [
         el("span", {
-          class: `hw-mark ${st === "done" ? "done" : st === "hold" ? "hold" : st === "na" ? "na" : "todo"}`,
-          text: st === "done" ? "✓" : st === "hold" ? "◌" : st === "na" ? "－" : "",
+          class: `hw-mark ${full ? "done" : c.kind === "num" ? "part" : c.kind === "hold" ? "hold" : c.kind === "na" ? "na" : "todo"}`,
+          text: markText,
         }),
-        el("span", {
-          class: "hw-text",
-          text: `${fmtDateK(d)} 수학 숙제 — ${st === "done" ? "했음" : st === "hold" ? "확인 전" : st === "na" ? "해당 없음" : "안 함"}`,
-        }),
+        el("span", { class: "hw-text", text: `${fmtDateK(d)} 수학 숙제 — ${statusText}` }),
       ])
     );
   }
@@ -1054,16 +1071,14 @@ function renderTeacherMathHomework(container) {
   card.appendChild(
     el("p", { class: "hint", text: "수학 수업 날짜별로 숙제를 했는지 확인한 결과입니다. 최근 날짜부터 — 옆으로 밀어서 지난 날짜를 보세요." })
   );
-  const stOf = (r, d) => {
-    const m = r?.byDate;
-    if (!m || !(d in m)) return "none";
-    return m[d] === true ? "done" : m[d] === null ? "hold" : "na";
-  };
+  const totals = academy.mathTotals || {};
   const tbl = el("table", { class: "grid" });
   tbl.appendChild(
     el("tr", {}, [
       el("th", { class: "name-cell", text: "이름" }),
-      ...dates.map((d) => el("th", { text: d.slice(5).replace("-", "/") })),
+      ...dates.map((d) =>
+        el("th", { text: `${d.slice(5).replace("-", "/")}${totals[d] ? ` (${totals[d]}문제)` : ""}` })
+      ),
     ])
   );
   let anyHold = false;
@@ -1073,29 +1088,43 @@ function renderTeacherMathHomework(container) {
       el("tr", {}, [
         el("td", { class: "name-cell", text: r.name }),
         ...dates.map((d) => {
-          const st = stOf(r, d);
-          if (st === "hold") anyHold = true;
-          if (st === "na") anyNA = true;
-          if (st === "done") return el("td", { class: "num", text: "✓" });
-          if (st === "hold") return el("td", { class: "num" }, [el("span", { class: "hw-hold", text: "◌" })]);
-          if (st === "na") return el("td", { class: "num" }, [el("span", { class: "hw-na", text: "－" })]);
-          return el("td", { class: "num" }, [el("span", { class: "t-dash", text: "안 함" })]);
+          const c = mathCell(r?.byDate, d);
+          if (c.kind === "hold") anyHold = true;
+          if (c.kind === "na") anyNA = true;
+          if (c.kind === "num") return el("td", { class: "num", text: totals[d] ? `${c.n}/${totals[d]}` : String(c.n) });
+          if (c.kind === "done") return el("td", { class: "num", text: "✓" });
+          if (c.kind === "hold") return el("td", { class: "num" }, [el("span", { class: "hw-hold", text: "◌" })]);
+          if (c.kind === "na") return el("td", { class: "num" }, [el("span", { class: "hw-na", text: "－" })]);
+          return el("td", { class: "num" }, [el("span", { class: "t-dash", text: totals[d] ? "X" : "안 함" })]);
         }),
       ])
     );
   }
-  // 학원 평균 행 (했음 비율 — ◌·－ 제외)
+  // 학원 평균 행 — 문제 수 기반 날짜는 평균 문제 수, 구형식 날짜는 했음 비율 (◌·－ 제외)
   const avgRow = el("tr", { class: "t-avg-row" }, [el("td", { class: "name-cell", text: "학원 평균" })]);
   for (const d of dates) {
+    const T = totals[d];
     let done = 0;
     let denom = 0;
+    let sum = 0;
     for (const r of rows) {
-      const st = stOf(r, d);
-      if (st === "hold" || st === "na") continue;
+      const c = mathCell(r?.byDate, d);
+      if (c.kind === "hold" || c.kind === "na") continue;
       denom++;
-      if (st === "done") done++;
+      if (c.kind === "num") {
+        sum += c.n;
+        if (c.n > 0) done++;
+      } else if (c.kind === "done") {
+        sum += T || 0;
+        done++;
+      }
     }
-    avgRow.appendChild(el("td", { class: "num", text: denom ? `${Math.round((done / denom) * 100)}%` : "–" }));
+    const text = !denom
+      ? "–"
+      : T
+        ? `${Math.round((sum / denom) * 10) / 10}/${T}`
+        : `${Math.round((done / denom) * 100)}%`;
+    avgRow.appendChild(el("td", { class: "num", text }));
   }
   tbl.appendChild(avgRow);
   card.appendChild(el("div", { class: "table-wrap" }, [tbl]));

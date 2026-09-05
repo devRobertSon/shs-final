@@ -311,20 +311,22 @@
           const mDates = [...(blob.mathDates || [])].sort();
           if (mDates.length && students.length) {
             card.appendChild(el("h3", { text: "수학 숙제 (날짜별)" }));
-            const mark = (present, v) => {
+            const totals = blob.mathTotals || {};
+            const mark = (present, v, d) => {
               if (!present) return el("td", { text: "" });
+              if (typeof v === "number") return el("td", { text: totals[d] ? `${v}/${totals[d]}` : String(v) });
               if (v === true) return el("td", { text: "✓" });
               return el("td", { class: "dim", text: v === null ? "◌" : "－" });
             };
             const head = el("tr", {}, [
               el("th", { class: "name", text: "이름" }),
-              ...mDates.map((d) => el("th", { text: fmtD(d) })),
+              ...mDates.map((d) => el("th", { text: `${fmtD(d)}${totals[d] ? ` (${totals[d]})` : ""}` })),
             ]);
             const body = students.map((st) => {
               const m = sBlobs.get(st.fileId)?.mathHomework || {};
               return el("tr", {}, [
                 el("td", { class: "name", text: st.name }),
-                ...mDates.map((d) => mark(d in m, m[d])),
+                ...mDates.map((d) => mark(d in m, m[d], d)),
               ]);
             });
             card.appendChild(el("div", { class: "table-wrap" }, [el("table", {}, [head, ...body])]));

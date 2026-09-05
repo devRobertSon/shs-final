@@ -141,6 +141,12 @@
   color: #52514e;
   border: 1px dashed #b7b5ac;
 }
+.hw-mark.part {
+  background: var(--accent-wash);
+  color: var(--accent-strong);
+  border: 1px solid #bcd6f2;
+  font-size: 13px;
+}
 li.hw-done .hw-text {
   color: var(--muted);
 }
