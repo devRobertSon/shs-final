@@ -2239,23 +2239,13 @@ function renderReportsTab(container) {
           (weekQuizzes.length ? "" : " (이 수업에 등록된 퀴즈 없음)"),
     })
   );
-  const students = activeStudentsOf(S.selAcademy);
+  // 학생 전원을 이름순으로 한 페이지에 나열 — 한 명씩 넘기지 않고 바로 입력한다
+  const students = [...activeStudentsOf(S.selAcademy)].sort((a, b) => a.name.localeCompare(b.name, "ko"));
   if (!students.length) {
     card.appendChild(el("p", { class: "empty", text: "학생이 없습니다." }));
     container.appendChild(card);
     return;
   }
-  let idx = 0;
-  const who = el("div", { class: "who" });
-  const count = el("div", { class: "char-count" });
-  const ta = el("textarea", {
-    rows: "6",
-    placeholder:
-      (quiz ? "이 단원" : "이 수업") +
-      "에 대해 학생/학부모에게 전달할 사항을 적어 주세요.\n" +
-      "마크다운 사용 가능: **굵게**, - 목록, 1. 번호 목록, [이름](https://링크), # 제목\n" +
-      "면담 결과 등 개별 링크는 [면담 결과 보기](https://주소) 형식으로 넣으면 클릭됩니다.",
-  });
 
   // 이 대상의 리포트 저장 맵 + 키 (퀴즈 연결 여부에 따라 달라진다)
   const repKey = quiz ? quiz.id : week.id;
@@ -2279,95 +2269,33 @@ function renderReportsTab(container) {
     if (rep && !rep.pdf && !rep.note) delete map[repKey];
   };
 
-  // ---- 분석 PDF (학생 본인 키로 암호화 — 그 학생 코드로만 열림) ----
-  const pdfBox = el("div");
+  card.appendChild(
+    el("p", {
+      class: "hint",
+      text:
+        "학생 전원을 이름순으로 한 페이지에서 입력합니다 — 입력하는 즉시 임시 저장되고, '발행'해야 사이트에 반영됩니다. " +
+        "전달 사항에는 마크다운(**굵게**, - 목록, [이름](https://링크))을 쓸 수 있고, " +
+        "PDF는 그 학생의 접속 코드로만 열리도록 개별 암호화되어 올라갑니다.",
+    })
+  );
 
-  const removePdf = (st) => {
-    const rep = repOf(st);
-    const pdf = rep?.pdf;
-    if (!pdf) return;
-    if (S.pendingUploads.has(pdf.path)) S.pendingUploads.delete(pdf.path);
-    else S.pendingDeletes.add(pdf.path);
-    delete rep.pdf;
-    cleanupRep(st);
-    markStudent(st.fileId);
-  };
+  for (const st of students) {
+    const block = el("div", { class: "report-student" });
+    block.appendChild(el("h4", { text: st.name }));
 
-  const renderPdf = () => {
-    clear(pdfBox);
-    const st = students[idx];
-    const pdf = repOf(st)?.pdf;
-    if (pdf) {
-      pdfBox.appendChild(
-        el("div", { class: "material" }, [
-          el("div", { class: "m-info" }, [
-            el("div", {
-              class: "m-title",
-              text: `📊 ${pdf.origName}${S.pendingUploads.has(pdf.path) ? " (발행 대기)" : ""}`,
-            }),
-            el("div", { class: "m-meta", text: formatBytes(pdf.size) }),
-          ]),
-          el("div", { class: "m-actions" }, [
-            el("button", {
-              class: "btn btn-small btn-danger",
-              text: "삭제",
-              onclick: async () => {
-                const ok = await confirmModal({
-                  title: "분석 PDF 삭제",
-                  body: `${st.name} 학생의 '${pdf.origName}'을(를) 삭제할까요?`,
-                  okText: "삭제",
-                  danger: true,
-                });
-                if (!ok) return;
-                removePdf(st);
-                renderPdf();
-              },
-            }),
-          ]),
-        ])
-      );
-    }
-    const fileIn = el("input", { type: "file", accept: "application/pdf,.pdf" });
-    const addBtn = el("button", {
-      class: "btn btn-small btn-primary",
-      text: pdf ? "PDF 교체" : "PDF 추가",
-      onclick: async () => {
-        const f = fileIn.files[0];
-        if (!f) return toast("파일을 선택해 주세요.", "error");
-        if (f.size > 90 * 1024 * 1024)
-          return toast("90MB를 넘는 파일은 올릴 수 없습니다 (GitHub 제한).", "error");
-        if (f.size > 25 * 1024 * 1024)
-          toast("파일이 큽니다 — 업로드와 열람이 느릴 수 있습니다.", "error");
-        const bytes = new Uint8Array(await f.arrayBuffer());
-        removePdf(st); // 교체 시 기존 것 정리 (대기 중 → 맵 제거 / 발행됨 → 삭제 예약)
-        const path = `data/m/${randomHexId(16)}.bin`;
-        ensureRep(st).pdf = {
-          path,
-          origName: f.name,
-          size: f.size,
-          mime: f.type || "application/pdf",
-        };
-        S.pendingUploads.set(path, { bytes, studentFileId: st.fileId });
-        markStudent(st.fileId);
-        toast("추가되었습니다. '발행'해야 학생이 볼 수 있습니다.", "ok");
-        renderPdf();
-      },
+    // 전달 사항 — 입력 즉시 임시 저장
+    const count = el("div", { class: "char-count" });
+    const ta = el("textarea", {
+      rows: "3",
+      placeholder: (quiz ? "이 단원" : "이 수업") + "에 대한 전달 사항 — 마크다운 가능, 예: [면담 결과 보기](https://주소)",
+      "aria-label": `${st.name} 전달 사항`,
     });
-    pdfBox.appendChild(el("div", { class: "toolbar" }, [fileIn, addBtn]));
-  };
-
-  const load = () => {
-    const st = students[idx];
-    who.textContent = `${st.name} (${idx + 1}/${students.length})`;
     ta.value = repOf(st)?.note || "";
     count.textContent = `${ta.value.length}자`;
-    renderPdf();
-  };
-  const save = () => {
-    const st = students[idx];
-    const cur = repOf(st)?.note || "";
-    const next = ta.value;
-    if (cur !== next) {
+    ta.addEventListener("input", () => {
+      count.textContent = `${ta.value.length}자`;
+      const next = ta.value;
+      if ((repOf(st)?.note || "") === next) return;
       if (next) ensureRep(st).note = next;
       else {
         const rep = repOf(st);
@@ -2375,46 +2303,87 @@ function renderReportsTab(container) {
         cleanupRep(st);
       }
       markStudent(st.fileId);
-    }
-  };
-  ta.addEventListener("input", () => {
-    count.textContent = `${ta.value.length}자`;
-    save();
-  });
+    });
+    block.appendChild(ta);
+    block.appendChild(count);
 
-  card.appendChild(
-    el("div", { class: "report-nav" }, [
-      el("button", {
-        class: "btn btn-small",
-        text: "← 이전",
-        onclick: () => {
-          save();
-          idx = (idx - 1 + students.length) % students.length;
-          load();
+    // 분석 PDF (학생 본인 키로 암호화 — 그 학생 코드로만 열림)
+    const pdfBox = el("div");
+    const removePdf = () => {
+      const rep = repOf(st);
+      const pdf = rep?.pdf;
+      if (!pdf) return;
+      if (S.pendingUploads.has(pdf.path)) S.pendingUploads.delete(pdf.path);
+      else S.pendingDeletes.add(pdf.path);
+      delete rep.pdf;
+      cleanupRep(st);
+      markStudent(st.fileId);
+    };
+    const renderPdf = () => {
+      clear(pdfBox);
+      const pdf = repOf(st)?.pdf;
+      if (pdf) {
+        pdfBox.appendChild(
+          el("div", { class: "material" }, [
+            el("div", { class: "m-info" }, [
+              el("div", {
+                class: "m-title",
+                text: `📊 ${pdf.origName}${S.pendingUploads.has(pdf.path) ? " (발행 대기)" : ""}`,
+              }),
+              el("div", { class: "m-meta", text: formatBytes(pdf.size) }),
+            ]),
+            el("div", { class: "m-actions" }, [
+              el("button", {
+                class: "btn btn-small btn-danger",
+                text: "삭제",
+                onclick: async () => {
+                  const ok = await confirmModal({
+                    title: "분석 PDF 삭제",
+                    body: `${st.name} 학생의 '${pdf.origName}'을(를) 삭제할까요?`,
+                    okText: "삭제",
+                    danger: true,
+                  });
+                  if (!ok) return;
+                  removePdf();
+                  renderPdf();
+                },
+              }),
+            ]),
+          ])
+        );
+      }
+      const fileIn = el("input", { type: "file", accept: "application/pdf,.pdf", "aria-label": `${st.name} PDF 선택` });
+      const addBtn = el("button", {
+        class: "btn btn-small btn-primary",
+        text: pdf ? "PDF 교체" : "PDF 추가",
+        onclick: async () => {
+          const f = fileIn.files[0];
+          if (!f) return toast("파일을 선택해 주세요.", "error");
+          if (f.size > 90 * 1024 * 1024)
+            return toast("90MB를 넘는 파일은 올릴 수 없습니다 (GitHub 제한).", "error");
+          if (f.size > 25 * 1024 * 1024)
+            toast("파일이 큽니다 — 업로드와 열람이 느릴 수 있습니다.", "error");
+          const bytes = new Uint8Array(await f.arrayBuffer());
+          removePdf(); // 교체 시 기존 것 정리 (대기 중 → 맵 제거 / 발행됨 → 삭제 예약)
+          const path = `data/m/${randomHexId(16)}.bin`;
+          ensureRep(st).pdf = {
+            path,
+            origName: f.name,
+            size: f.size,
+            mime: f.type || "application/pdf",
+          };
+          S.pendingUploads.set(path, { bytes, studentFileId: st.fileId });
+          markStudent(st.fileId);
+          toast(`${st.name} 학생 PDF가 추가되었습니다. '발행'해야 반영됩니다.`, "ok");
+          renderPdf();
         },
-      }),
-      who,
-      el("button", {
-        class: "btn btn-small",
-        text: "다음 →",
-        onclick: () => {
-          save();
-          idx = (idx + 1) % students.length;
-          load();
-        },
-      }),
-    ])
-  );
-  card.appendChild(el("h3", { text: quiz ? "퀴즈 분석 PDF" : "리포트 PDF", style: "font-size:15px;margin-top:8px" }));
-  card.appendChild(
-    el("p", { class: "hint", text: "이 학생의 접속 코드로만 열리도록 개별 암호화되어 올라갑니다." })
-  );
-  card.appendChild(pdfBox);
-  card.appendChild(el("h3", { text: "전달 사항", style: "font-size:15px;margin-top:14px" }));
-  card.appendChild(ta);
-  card.appendChild(count);
-  card.appendChild(el("p", { class: "hint", text: "입력하는 즉시 임시 저장됩니다. '발행'해야 사이트에 반영됩니다." }));
-  load();
+      });
+      pdfBox.appendChild(el("div", { class: "toolbar" }, [fileIn, addBtn]));
+    };
+    renderPdf();
+    block.appendChild(pdfBox);
+    card.appendChild(block);
+  }
   container.appendChild(card);
 }
 
