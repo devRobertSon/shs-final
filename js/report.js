@@ -533,18 +533,18 @@ function renderTrend(data, maxScore) {
     labelIdx.add(vals.indexOf(Math.min(...vals)));
   }
 
-  let s = `<line x1="${M.left - 6}" y1="${H - M.bottom}" x2="${W - M.right + 6}" y2="${H - M.bottom}" stroke="#c3c2b7" stroke-width="1"/>`;
-  s += `<polyline points="${data.map((d, i) => `${x(i)},${y(d.avg)}`).join(" ")}" fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  let s = `<line x1="${M.left - 6}" y1="${H - M.bottom}" x2="${W - M.right + 6}" y2="${H - M.bottom}" stroke="#c3cede" stroke-width="1"/>`;
+  s += `<polyline points="${data.map((d, i) => `${x(i)},${y(d.avg)}`).join(" ")}" fill="none" stroke="#2a6fd0" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
   data.forEach((d, i) => {
-    s += `<circle cx="${x(i)}" cy="${y(d.avg)}" r="${d.isP ? 4.5 : 3.5}" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>`;
+    s += `<circle cx="${x(i)}" cy="${y(d.avg)}" r="${d.isP ? 4.5 : 3.5}" fill="#2a6fd0" stroke="#ffffff" stroke-width="2"/>`;
     if (labelIdx.has(i)) {
-      s += `<text x="${x(i)}" y="${y(d.avg) - 8}" text-anchor="middle" font-size="9.5" font-weight="${d.isP ? 700 : 400}" fill="#0b0b0b">${d.avg}</text>`;
+      s += `<text x="${x(i)}" y="${y(d.avg) - 8}" text-anchor="middle" font-size="9.5" font-weight="${d.isP ? 700 : 400}" fill="#16202e">${d.avg}</text>`;
     }
     const anchor = i === 0 ? "start" : i === n - 1 ? "end" : "middle";
     const every = Math.max(1, Math.ceil(n / 4));
     // 마지막 라벨과 겹치는 직전 라벨은 건너뛴다 (chart.js와 동일 규칙)
     if (i === n - 1 || (i % every === 0 && n - 1 - i >= every)) {
-      s += `<text x="${x(i)}" y="${H - M.bottom + 13}" text-anchor="${anchor}" font-size="9" fill="#898781">${escapeXML(shorten(d.label))}</text>`;
+      s += `<text x="${x(i)}" y="${H - M.bottom + 13}" text-anchor="${anchor}" font-size="9" fill="#76839a">${escapeXML(shorten(d.label))}</text>`;
     }
   });
 

@@ -3,12 +3,12 @@
 import { el, clear } from "./ui.js";
 
 const COLOR = {
-  mine: "#2a78d6", // series-1 blue
-  avg: "#52514e", // secondary ink (비교 기준선은 절제된 회색 점선)
-  grid: "#e1e0d9",
-  axis: "#c3c2b7",
-  tick: "#898781",
-  surface: "#fcfcfb",
+  mine: "#2a6fd0", // series-1 blue
+  avg: "#445062", // secondary ink (비교 기준선은 절제된 회색 점선)
+  grid: "#e2e9f4",
+  axis: "#c3cede",
+  tick: "#76839a",
+  surface: "#ffffff",
 };
 
 // weeks: [{id, label}], mine/avg: (number|null)[], yMax: number
@@ -182,7 +182,7 @@ export function renderHistogram(container, { scores, max = 100 }) {
       // 위쪽만 둥근 막대 (바닥은 각지게)
       const r = Math.min(4, bh);
       s += `<path d="M${bx},${H - M.bottom} L${bx},${by + r} Q${bx},${by} ${bx + r},${by} L${bx + barW - r},${by} Q${bx + barW},${by} ${bx + barW},${by + r} L${bx + barW},${H - M.bottom} Z" fill="${COLOR.mine}"/>`;
-      s += `<text x="${bx + barW / 2}" y="${by - 4}" text-anchor="middle" font-size="10" fill="#0b0b0b">${count}</text>`;
+      s += `<text x="${bx + barW / 2}" y="${by - 4}" text-anchor="middle" font-size="10" fill="#16202e">${count}</text>`;
     }
     if (i % 2 === 0) {
       s += `<text x="${M.left + i * slot}" y="${H - M.bottom + 14}" text-anchor="middle" font-size="9" fill="${COLOR.tick}">${Math.round((i * max) / 10)}</text>`;
@@ -198,7 +198,7 @@ export function renderHistogram(container, { scores, max = 100 }) {
 function legendLine(color, dashed) {
   return `<svg viewBox="0 0 28 10" width="28" height="10" aria-hidden="true"><line x1="1" y1="5" x2="27" y2="5" stroke="${color}" stroke-width="2"${
     dashed ? ' stroke-dasharray="5 4"' : ""
-  }/>${dashed ? "" : `<circle cx="14" cy="5" r="3.5" fill="${color}" stroke="#fcfcfb" stroke-width="1.5"/>`}</svg>`;
+  }/>${dashed ? "" : `<circle cx="14" cy="5" r="3.5" fill="${color}" stroke="#ffffff" stroke-width="1.5"/>`}</svg>`;
 }
 
 // 단어 단위 줄바꿈 (한 줄 maxChars 이내, 최대 maxLines줄 — 넘치면 마지막 줄에 …)

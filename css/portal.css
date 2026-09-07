@@ -8,14 +8,15 @@
   align-items: center;
   justify-content: center;
   padding: 24px 16px;
+  background: var(--brand-grad);
 }
 .login-card {
   width: 100%;
   max-width: 380px;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
+  border: none;
+  border-radius: 20px;
+  box-shadow: 0 16px 40px rgba(12, 24, 70, 0.35);
   padding: 28px 22px;
   text-align: center;
 }
@@ -36,24 +37,35 @@
   text-transform: uppercase;
 }
 
-/* ---------- 대시보드 헤더 ---------- */
+/* ---------- 대시보드 헤더 — 로고 그라데이션 카드 ---------- */
 .portal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 14px 0 6px;
+  background: var(--brand-grad);
+  border-radius: 20px;
+  padding: 18px 16px;
+  margin-top: 12px;
+  box-shadow: 0 10px 24px rgba(34, 48, 126, 0.22);
 }
 .portal-header .who {
   min-width: 0;
 }
 .portal-header .who .name {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
+  color: #fff;
 }
 .portal-header .who .academy {
   font-size: 13px;
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.78);
+}
+.portal-header .btn {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: transparent;
+  color: #fff;
+  min-height: 38px;
 }
 .week-select-row {
   display: flex;
@@ -70,9 +82,8 @@
   padding: 10px 0 4px;
 }
 .week-block + .week-block {
-  border-top: 1px solid var(--hairline);
   margin-top: 6px;
-  padding-top: 14px;
+  padding-top: 10px;
 }
 .wb-head {
   display: flex;
@@ -81,9 +92,12 @@
   gap: 8px;
   margin-bottom: 4px;
 }
+.wb-head .btn {
+  border-radius: 999px;
+}
 .wb-label {
   font-weight: 700;
-  font-size: 15px;
+  font-size: 16px;
   min-width: 0;
 }
 .wb-progress {
@@ -102,12 +116,11 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 12px 4px;
-  border-bottom: 1px solid var(--hairline);
+  padding: 12px;
+  background: var(--page);
+  border-radius: 14px;
+  margin: 8px 0;
   font-size: 15px;
-}
-.hw-list li:last-child {
-  border-bottom: none;
 }
 .hw-mark {
   flex: 0 0 auto;
