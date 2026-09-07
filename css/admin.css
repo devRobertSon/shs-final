@@ -85,6 +85,24 @@ button.cell-toggle.na {
   color: #52514e;
   font-weight: 700;
 }
+/* 리포트 탭 — 학생 전원 한 페이지 입력 (이름순) */
+.report-student {
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 10px 0;
+}
+.report-student h4 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+.report-student textarea {
+  min-height: 72px;
+}
+.report-student .toolbar {
+  margin: 6px 0 0;
+}
+
 /* 수학 숙제 셀 — [해온 문제 수 입력] + [◌/－ 상태 버튼] */
 .math-cell {
   display: flex;
@@ -702,17 +720,6 @@ button.cal-day.other:hover {
   text-align: center;
 }
 
-.report-nav {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.report-nav .who {
-  flex: 1;
-  text-align: center;
-  font-weight: 600;
-}
 .char-count {
   text-align: right;
   font-size: 12px;
