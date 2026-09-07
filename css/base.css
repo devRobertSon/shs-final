@@ -1,21 +1,24 @@
 /* base.css — 토큰, 리셋, 공통 컴포넌트 (모바일 우선) */
+/* 소프트 카드 앱 디자인 — 알파학원 로고 블루 팔레트 (시안→네이비 그라데이션은 헤더에서 사용) */
 :root {
-  --page: #f9f9f7;
-  --surface: #fcfcfb;
-  --ink: #0b0b0b;
-  --ink-2: #52514e;
-  --muted: #898781;
-  --hairline: #e1e0d9;
-  --border: rgba(11, 11, 11, 0.1);
-  --accent: #2a78d6;
-  --accent-strong: #1c5cab;
-  --accent-wash: #eaf2fc;
+  --page: #eef3fb;
+  --surface: #ffffff;
+  --ink: #16202e;
+  --ink-2: #445062;
+  --muted: #76839a;
+  --hairline: #e2e9f4;
+  --border: rgba(22, 32, 46, 0.06);
+  --accent: #2a6fd0;
+  --accent-strong: #1d54a8;
+  --accent-wash: #e7f0fb;
   --good: #0ca30c;
   --good-text: #006300;
   --bad: #d03b3b;
   --warn-wash: #fdf3dc;
-  --radius: 12px;
-  --shadow: 0 1px 3px rgba(11, 11, 11, 0.08);
+  --radius: 20px;
+  --shadow: 0 6px 18px rgba(42, 90, 180, 0.1);
+  /* 로고 그라데이션 (헤더 카드·포인트 요소 공용) */
+  --brand-grad: linear-gradient(135deg, #2f8fd8, #22307e);
 }
 
 * {
@@ -53,10 +56,10 @@ a {
 
 .card {
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  padding: 16px;
+  padding: 18px;
   margin: 12px 0;
 }
 .card h2 {
@@ -250,7 +253,7 @@ div.field > span {
 /* ---------- 탭 ---------- */
 .tabbar {
   display: flex;
-  gap: 4px;
+  gap: 8px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
@@ -258,8 +261,8 @@ div.field > span {
   top: 0;
   z-index: 20;
   background: var(--page);
-  padding: 8px 0;
-  border-bottom: 1px solid var(--hairline);
+  padding: 12px 0 8px;
+  border-bottom: none;
 }
 /* 포털용 래퍼: 탭이 잘려 있음을 좌우 페이드+화살표로 표시 (관리 페이지의 단독 .tabbar는 그대로) */
 .tabbar-wrap {
@@ -307,19 +310,23 @@ div.field > span {
   flex: 0 0 auto;
   min-height: 44px;
   padding: 8px 14px;
-  border: none;
+  border: 1px solid var(--hairline);
   border-radius: 999px;
-  background: transparent;
+  background: var(--surface);
   color: var(--ink-2);
   font-size: 15px;
+  font-weight: 600;
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(42, 90, 180, 0.06);
 }
 .tab.active {
   background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
-  font-weight: 600;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(42, 111, 208, 0.3);
 }
 /* 새 소식 배지 — 새 공지/퀴즈/리포트가 있는 탭에 표시 */
 .tab .tab-dot {

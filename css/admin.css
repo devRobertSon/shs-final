@@ -5,30 +5,40 @@
   padding: 0 16px 64px;
 }
 
+/* 헤더 — 로고 그라데이션 카드 (학생 포털 헤더와 동일한 언어) */
 .admin-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 14px 0 6px;
+  background: var(--brand-grad);
+  border-radius: 20px;
+  padding: 16px;
+  margin-top: 12px;
+  box-shadow: 0 10px 24px rgba(34, 48, 126, 0.22);
   flex-wrap: wrap;
 }
 .admin-header h1 {
   font-size: 19px;
   margin: 0;
+  color: #fff;
+}
+.admin-header .btn {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: transparent;
+  color: #fff;
+  min-height: 38px;
 }
 .dirty-badge {
-  background: var(--warn-wash);
-  border: 1px solid #ecd9a6;
-  color: #7a5b00;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: #ffe9b3;
   border-radius: 999px;
   font-size: 13px;
   padding: 4px 12px;
 }
 .dirty-badge.clean {
-  background: #effaef;
-  border-color: #bfe6bf;
-  color: var(--good-text);
+  color: #c9f3c9;
 }
 
 .toolbar {
