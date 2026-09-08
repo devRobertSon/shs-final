@@ -225,15 +225,25 @@ export function mathCell(map, date) {
   return v === true ? { kind: "done" } : v === null ? { kind: "hold" } : { kind: "na" };
 }
 
-// 보고서 귀속 규칙: 날짜 d의 체크는 'd 바로 다음에 과학 수업이 있는 주차'의 보고서에 실린다.
-// 면담·면접 주차는 과학 흐름이 아니므로 건너뛴다 (그 주차의 보고서·회차별 ②에도 실리지 않음).
+// 보고서 귀속 규칙: 날짜 d의 체크는 'd로부터 5일 이후의 첫 수업이 있는 주차'에 실린다.
+// 수업 종류는 가리지 않는다 — 과학뿐 아니라 면담·면접 주차의 보고서·회차별 ②에도 실린다.
+// (수학 선생님이 결과를 옮겨 적을 시간을 주기 위한 5일 유예 — 5일째 되는 날 수업 포함)
 export function mathDatesForWeek(weeks, mathDates, weekId) {
-  const sorted = sortWeeks(weeks).filter((w) => weekType(w) === "science" && (w.sessions || []).length);
+  const sorted = sortWeeks(weeks).filter((w) => (w.sessions || []).length);
   const idx = sorted.findIndex((w) => w.id === weekId);
   if (idx < 0) return [];
+  // 날짜 d는 'd+5일 이후의 첫 수업'이 있는 주차에 실린다:
+  //   prevStart < d+5 ≤ start  (start = 이 주차 첫 수업일, prevStart = 직전 주차 첫 수업일)
+  const plus5 = (d) => {
+    const t = new Date(d + "T00:00:00");
+    t.setDate(t.getDate() + 5);
+    return toYMD(t);
+  };
   const start = sorted[idx].sessions[0];
   const prevStart = idx > 0 ? sorted[idx - 1].sessions[0] : null;
-  return [...(mathDates || [])].sort().filter((d) => d < start && (prevStart == null || d >= prevStart));
+  return [...(mathDates || [])]
+    .sort()
+    .filter((d) => plus5(d) <= start && (prevStart == null || plus5(d) > prevStart));
 }
 
 // 접속 통계 핑 URL — 저장소 릴리스(visit-counter)의 작은 첨부 파일 주소.
