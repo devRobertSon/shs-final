@@ -164,8 +164,9 @@ function renderLogin(errorMsg) {
     if (e.key === "Enter") submit();
   });
 
-  const container = el("div", { class: "admin-container" }, [
-    el("div", { class: "card", style: "max-width:420px;margin:48px auto" }, [
+  // 학생 로그인과 같은 그라데이션 배경 위에 카드가 떠 있는 첫 화면
+  const container = el("div", { class: "lock-wrap" }, [
+    el("div", { class: "card lock-card" }, [
       el("h2", { text: "관리 페이지" }),
       el("p", { class: "hint", text: "마스터 비밀번호를 입력해 주세요." }),
       el("label", { class: "field" }, [pw]),
