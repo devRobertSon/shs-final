@@ -1659,19 +1659,17 @@ function renderWeeklyTab(container) {
   if (prev) container.appendChild(homeworkCard(prev, { title: `${t1} — ${prev.label}` }));
   else container.appendChild(emptyCard(t1, isSci ? "이전 주차가 없습니다 (첫 주차)." : `이전 ${tl} 주차가 없습니다 (첫 ${tl}).`));
 
-  // ② 지난 주 수학 숙제 체크 — 이번 주차 보고서에 실릴 수학 수업 날짜들
-  //    (지난 과학 수업 이후 ~ 이번 과학 수업 전의 수학 수업 — 과학 주차에만 실린다)
-  if (isSci) {
+  // ② 지난 수학 숙제 체크 — 이번 주차 보고서에 실릴 수학 수업 날짜들
+  //    (날짜 d는 'd로부터 5일 이후의 첫 수업'이 있는 주차에 실린다 — 과학·면담·면접 무관)
+  {
     const mDates = mathDatesForWeek(academyBlob().weeks, academyBlob().mathDates, week.id);
     container.appendChild(
       mathHomeworkCard({
         dates: mDates,
-        title: `② 지난 주 수학 숙제 체크${mDates.length ? ` — ${mDates.map((d) => d.slice(5).replace("-", "/")).join(" · ")}` : ""}`,
+        title: `② 지난 수학 숙제 체크${mDates.length ? ` — ${mDates.map((d) => d.slice(5).replace("-", "/")).join(" · ")}` : ""}`,
         manage: false,
       })
     );
-  } else {
-    container.appendChild(emptyCard("② 수학 숙제 체크", `수학 숙제는 과학 주차의 회차별 입력·보고서에만 표시됩니다 (${tl} 주차 제외).`));
   }
 
   // ③ 지난 주(같은 종류) 퀴즈 점수 입력
@@ -1745,7 +1743,7 @@ function renderHomeworkTab(container) {
 // ---------- ③-2 수학 숙제 체크 (날짜별) ----------
 // 수학 수업은 과학 수업일과 다른 날이고 한 주에 여러 번일 수 있다 —
 // 주차·출석과 무관하게 '수학 수업 날짜'마다 학생별 1칸으로 체크한다.
-// 날짜 d의 체크는 d 바로 다음 과학 수업 주차의 보고서·회차별 입력 ②에 나타난다.
+// 날짜 d의 체크는 'd로부터 5일 이후의 첫 수업(과학·면담·면접 무관)'이 있는 주차의 보고서·회차별 ②에 나타난다.
 function renderMathHomeworkTab(container) {
   toolbar(container, { withWeek: false });
   container.appendChild(mathHomeworkCard());
@@ -1924,7 +1922,7 @@ function mathHomeworkCard({ dates = null, title = "수학 숙제 체크", manage
       text:
         "날짜 아래 '문제 수' 칸에 그 회차의 전체 문제 수를 적고, 학생 칸에는 해온 문제 수를 적습니다 " +
         "(빈칸 = X 안 해옴). 옆의 작은 버튼은 ◌ 확인 전(결석 등) → － 해당 없음(수강 전·드랍 등) → 빈칸 순으로 바뀝니다. " +
-        "✓는 문제 수 도입 전의 '했음' 기록입니다. 각 날짜의 체크는 그 날짜 바로 다음 과학 수업 주차의 보고서에 실립니다.",
+        "✓는 문제 수 도입 전의 '했음' 기록입니다. 각 날짜의 체크는 그 날짜로부터 5일 이후의 첫 수업(과학·면담·면접 무관)이 있는 주차의 보고서에 실립니다.",
     })
   );
   return card;

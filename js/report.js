@@ -123,15 +123,10 @@ export function buildDirectorReport({
   doc.appendChild(section("출석 현황", attChildren));
 
   // ---------- ③ 지난 주 숙제 수행 (P) — 과학 항목별 + 수학(날짜별) ----------
-  // 수학 숙제는 '날짜 d 바로 다음 과학 수업 주차의 보고서'에 실린다 —
-  // 이 보고서(W)에는 지난 과학 수업(P) 이후 ~ 이번 과학 수업(W) 전의 수학 수업 날짜들이 들어간다.
-  if (!P) {
-    info("이전 주차가 없어 숙제·퀴즈 섹션은 표시되지 않습니다 (첫 주차).");
-  } else {
-    const hwChildren = [];
-    const items = P.homework || [];
-    const mDates = mathDatesForWeek(weeks, mathDates, W.id);
-    const fmtD = (d) => d.slice(5).replace("-", "/");
+  // 수학 숙제는 '날짜 d로부터 5일 이후의 첫 수업이 있는 주차'의 보고서에 실린다
+  // (수업 종류 무관 — 면담·면접 주차 보고서에도 실린다).
+  const mDates = mathDatesForWeek(weeks, mathDates, W.id);
+  const fmtD = (d) => d.slice(5).replace("-", "/");
     // 수학 열 머리글 — 전체 문제 수가 있으면 함께 표기
     const mathHead = (d) => `수학 ${fmtD(d)}${mathTotals?.[d] ? ` (${mathTotals[d]}문제)` : ""}`;
     const mathChip = (s, d) => {
@@ -189,6 +184,31 @@ export function buildDirectorReport({
         (nas ? ` · － 해당 없음 ${nas}명` : "")
       );
     };
+
+  if (!P) {
+    info("이전 주차가 없어 숙제·퀴즈 섹션은 표시되지 않습니다 (첫 주차).");
+    // 첫 주차여도 이 주차에 귀속된 수학 숙제 날짜가 있으면 수학만 따로 싣는다
+    if (mDates.length) {
+      const kids = [];
+      const tbl = el("table", { class: "rd-table" });
+      tbl.appendChild(
+        el("tr", {}, [el("th", { text: "이름" }), ...mDates.map((d) => el("th", { text: mathHead(d) }))])
+      );
+      for (const s of students) {
+        tbl.appendChild(
+          el("tr", {}, [
+            el("td", { class: "rd-name", text: s.name }),
+            ...mDates.map((d) => el("td", {}, [mathChip(s, d)])),
+          ])
+        );
+      }
+      kids.push(el("div", { class: "rd-table-wrap" }, [tbl]));
+      for (const d of mDates) kids.push(el("p", { class: "rd-note", text: mathNote(d) }));
+      doc.appendChild(section("수학 숙제", kids));
+    }
+  } else {
+    const hwChildren = [];
+    const items = P.homework || [];
     if (!items.length) {
       warn(`지난 주(${weekDisplayLabel(P)})에 등록된 숙제 항목이 없습니다.`);
       hwChildren.push(el("p", { class: "rd-empty", text: "(과학 숙제 항목 없음)" }));
