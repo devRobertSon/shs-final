@@ -108,6 +108,27 @@ export async function copyText(text, successMsg = "복사되었습니다. 카톡
 // ---------- 탭 ----------
 // tabs: [{id, label}], onSelect(id). 반환: {select(id), setBadge(id, on)}
 // 모바일에서 탭이 잘릴 때 좌우 페이드+화살표로 "옆으로 더 있음"을 표시한다.
+// 탭바에 좌우 스크롤 화살표(흰 원형 버튼)를 붙인다 — 잘린 탭이 있을 때만 나타나고,
+// 누르면 그쪽으로 스크롤된다 (스크롤바를 숨겼으므로 마우스 환경의 유일한 이동 수단).
+export function attachTabScroller(bar) {
+  const mkBtn = (dir) =>
+    el("button", {
+      class: `tab-fade ${dir}`,
+      "aria-label": dir === "left" ? "탭 왼쪽으로 이동" : "탭 오른쪽으로 이동",
+      text: dir === "left" ? "‹" : "›",
+      onclick: () => bar.scrollBy({ left: dir === "left" ? -180 : 180, behavior: "smooth" }),
+    });
+  const wrap = el("div", { class: "tabbar-wrap" }, [bar, mkBtn("left"), mkBtn("right")]);
+  const update = () => {
+    wrap.classList.toggle("more-left", bar.scrollLeft > 2);
+    wrap.classList.toggle("more-right", bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 2);
+  };
+  bar.addEventListener("scroll", update, { passive: true });
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(update).observe(bar);
+  requestAnimationFrame(update);
+  return wrap;
+}
+
 export function tabBar(container, tabs, onSelect) {
   const bar = el("div", { class: "tabbar", role: "tablist" });
   const buttons = new Map();
@@ -129,19 +150,7 @@ export function tabBar(container, tabs, onSelect) {
     buttons.set(t.id, btn);
     bar.appendChild(btn);
   }
-  const wrap = el("div", { class: "tabbar-wrap" }, [
-    bar,
-    el("div", { class: "tab-fade left", "aria-hidden": "true", text: "‹" }),
-    el("div", { class: "tab-fade right", "aria-hidden": "true", text: "›" }),
-  ]);
-  const updateFades = () => {
-    wrap.classList.toggle("more-left", bar.scrollLeft > 2);
-    wrap.classList.toggle("more-right", bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 2);
-  };
-  bar.addEventListener("scroll", updateFades, { passive: true });
-  if (typeof ResizeObserver !== "undefined") new ResizeObserver(updateFades).observe(bar);
-  requestAnimationFrame(updateFades);
-  container.appendChild(wrap);
+  container.appendChild(attachTabScroller(bar));
   // 새 소식 배지(●) — on이면 탭 라벨 뒤에 빨간 점 표시
   const setBadge = (id, on) => {
     const btn = buttons.get(id);

@@ -18,7 +18,7 @@ import {
   b64encode,
 } from "./crypto.js";
 import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, isoWeekIdAfter, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER, isNoShow, isNA, triState, mathCell, mathDatesForWeek, WEEK_TYPES, weekType, weekDisplayLabel, prevWeekOfType } from "./store.js";
-import { $, el, clear, toast, confirmModal, copyText, setBusy, mdBlock } from "./ui.js";
+import { $, el, clear, toast, confirmModal, copyText, setBusy, mdBlock, attachTabScroller } from "./ui.js";
 import { runWizard, createStudent, emptyStudentBlob, emptyAcademyBlob, printCodeCards } from "./setup.js";
 import { buildDirectorReport } from "./report.js";
 import { publishToGitHub, guessRepoFromLocation } from "./github.js";
@@ -336,7 +336,8 @@ function renderMain() {
     btns.set(id, b);
     bar.appendChild(b);
   }
-  container.appendChild(bar);
+  // 좁은 화면에서도 탭을 옮길 수 있게 좌우 화살표 버튼을 붙인다 (학생 포털과 동일)
+  container.appendChild(attachTabScroller(bar));
   contentEl = el("div");
   container.appendChild(contentEl);
   clear(mount).appendChild(container);
