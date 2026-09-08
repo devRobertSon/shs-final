@@ -222,6 +222,30 @@ li.hw-done .hw-text {
   margin-top: 8px;
   min-height: 1.4em;
 }
+/* 점수 추이 팝업 — 점 위에 단원 이름과 점수 표시 */
+.chart-svg {
+  position: relative;
+}
+.chart-tip {
+  position: absolute;
+  z-index: 5;
+  display: none;
+  background: var(--ink);
+  color: #fff;
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 6px 16px rgba(10, 20, 50, 0.28);
+}
+.chart-tip .t {
+  font-weight: 700;
+  margin-bottom: 2px;
+  white-space: normal;
+  max-width: 180px;
+}
 
 /* ---------- 리포트 (단원별) ---------- */
 .unit-report {

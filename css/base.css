@@ -181,6 +181,29 @@ a {
   color: var(--accent-strong);
   word-break: break-all;
 }
+/* 마크다운 표 (| 셀 | 셀 |) — 좁은 화면에서는 .table-wrap 안에서 가로 스크롤 */
+.md-body .table-wrap {
+  margin: 0 0 8px;
+}
+.md-body table {
+  border-collapse: collapse;
+  font-size: 14px;
+  width: 100%;
+}
+.md-body th,
+.md-body td {
+  border: 1px solid var(--hairline);
+  padding: 5px 8px;
+  text-align: left;
+  vertical-align: top;
+  min-width: 44px;
+}
+.md-body th {
+  background: var(--page);
+  color: var(--ink-2);
+  font-weight: 600;
+  white-space: nowrap;
+}
 .t-note-md {
   font-size: 14px;
 }

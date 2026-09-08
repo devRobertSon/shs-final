@@ -12,6 +12,9 @@ const COLOR = {
 };
 
 // weeks: [{id, label}], mine/avg: (number|null)[], yMax: number
+// X축 라벨은 그리지 않는다 — 단원이 많으면 겹쳐 읽을 수 없어서,
+// 점에 마우스를 올리거나(PC) 점/구간을 탭하면(모바일) 단원 이름과 점수가 팝업으로 뜬다.
+// 내 점수와 전체 평균이 가까우면(겹쳐 보이면) 한 팝업에 단원·내 점수·평균 세 줄이 함께 나온다.
 export function renderScoreChart(container, { weeks, mine, avg, yMax = 100 }) {
   clear(container);
   const n = weeks.length;
@@ -23,28 +26,8 @@ export function renderScoreChart(container, { weeks, mine, avg, yMax = 100 }) {
   }
 
   const W = 360;
-  const fontX = 9;
-  const lineH = fontX + 3;
-  const charW = fontX * 0.95;
-
-  // X 라벨: 모든 단원을 같은 높이에서 시작해 표시한다.
-  // 각 라벨의 가로 폭은 점 간격 안으로 좁게 잡고, 이름이 길면 단어 단위로
-  // 계속 줄바꿈해 아래로 길어진다 (겹침 없음).
-  const iw0 = W - 34 - 14;
-  const slot0 = n === 1 ? iw0 : iw0 / (n - 1);
-  const budget = Math.max(18, Math.min(slot0 - 6, 90)); // 라벨 한 줄 최대 폭(px)
-  const maxChars = Math.max(2, Math.floor(budget / charW));
-  const half = (maxChars * charW) / 2;
-  // 라벨이 가운데 정렬이므로 양 끝 라벨이 잘리지 않게 여백을 라벨 반폭만큼 확보
-  const M = { top: 14, right: Math.max(14, half + 2), bottom: 30, left: Math.max(34, half + 2) };
+  const M = { top: 14, right: 14, bottom: 12, left: 34 };
   const iw = W - M.left - M.right;
-
-  const labelLines = weeks.map((w) =>
-    wrapLabel(String(w.label).replace(/\s*\(.*\)\s*/, ""), maxChars, 99)
-  );
-  const maxLines = Math.max(1, ...labelLines.map((l) => l.length));
-  M.bottom = 14 + maxLines * lineH + 4;
-
   const ih = 186;
   const H = M.top + ih + M.bottom;
   const x = (i) => M.left + (n === 1 ? iw / 2 : (i / (n - 1)) * iw);
@@ -61,15 +44,6 @@ export function renderScoreChart(container, { weeks, mine, avg, yMax = 100 }) {
     s += `<text x="${M.left - 6}" y="${gy + 3.5}" text-anchor="end" font-size="10" fill="${
       COLOR.tick
     }">${Math.round(g * step)}</text>`;
-  }
-  // X 라벨 렌더: 모두 같은 높이에서 시작, 가운데 정렬, 줄바꿈은 아래로
-  for (let i = 0; i < n; i++) {
-    const tx = x(i);
-    const baseY = M.top + ih + 13;
-    const spans = labelLines[i]
-      .map((ln, k) => `<tspan x="${tx}" dy="${k === 0 ? 0 : lineH}">${escapeXML(ln)}</tspan>`)
-      .join("");
-    s += `<text x="${tx}" y="${baseY}" text-anchor="middle" font-size="${fontX}" fill="${COLOR.tick}">${spans}</text>`;
   }
 
   // null이 끼면 선을 끊는다 (0으로 그리지 않음)
@@ -99,43 +73,90 @@ export function renderScoreChart(container, { weeks, mine, avg, yMax = 100 }) {
   s += path(segments(avg), COLOR.avg, "5 4");
   s += path(segments(mine), COLOR.mine, null);
 
+  // 전체 평균 마커: 작은 점 (팝업 대상이 보이도록)
+  avg.forEach((v, i) => {
+    if (v == null) return;
+    s += `<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="${COLOR.avg}" stroke="${COLOR.surface}" stroke-width="1.5"/>`;
+  });
   // 본인 점수 마커: r=4 + 표면색 2px 링 (선 위에서도 또렷하게)
   mine.forEach((v, i) => {
     if (v == null) return;
-    s += `<circle cx="${x(i)}" cy="${y(v)}" r="4" fill="${COLOR.mine}" stroke="${
-      COLOR.surface
-    }" stroke-width="2"><title>${escapeXML(weeks[i].label)} · 내 점수 ${v}${
-      avg[i] != null ? ` · 전체 평균 ${avg[i]}` : ""
-    }</title></circle>`;
+    s += `<circle cx="${x(i)}" cy="${y(v)}" r="4" fill="${COLOR.mine}" stroke="${COLOR.surface}" stroke-width="2"/>`;
   });
 
   const svg = el("div", { class: "chart-svg" });
   svg.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="내 점수와 전체 평균 추이 그래프" style="width:100%;height:auto;display:block">${s}</svg>`;
-
-  // 터치/클릭 → 캡션 갱신 (주차 세로 구간 전체를 히트 영역으로)
-  const caption = el("div", { class: "chart-caption", text: "점을 누르면 자세한 값이 표시됩니다." });
   const svgEl = svg.querySelector("svg");
-  const hitLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+
+  // ---- 팝업 ----
+  const tip = el("div", { class: "chart-tip" });
+  svg.appendChild(tip);
+  let tipKey = null;
+  const hide = () => {
+    tip.style.display = "none";
+    tipKey = null;
+  };
+  // series: "mine" | "avg" | "both"(구간 탭)
+  const show = (i, series) => {
+    clear(tip);
+    tip.appendChild(el("div", { class: "t", text: weeks[i].label }));
+    // 내 점수와 평균이 화면에서 겹칠 만큼 가까우면 어느 점을 골라도 세 줄을 함께 보여준다
+    const near = mine[i] != null && avg[i] != null && Math.abs(y(mine[i]) - y(avg[i])) <= 16;
+    const wantMine = series !== "avg" || near;
+    const wantAvg = series !== "mine" || near;
+    if (wantMine) tip.appendChild(el("div", { text: mine[i] != null ? `내 점수 ${mine[i]}` : "내 점수 없음" }));
+    if (wantAvg && avg[i] != null) tip.appendChild(el("div", { text: `전체 평균 ${avg[i]}` }));
+    const anchor = series === "avg" ? avg[i] : mine[i] != null ? mine[i] : avg[i];
+    const box = svg.getBoundingClientRect();
+    const scale = box.width / W;
+    const px = x(i) * scale;
+    const py = y(anchor) * scale;
+    tip.style.display = "block";
+    const tw = tip.offsetWidth;
+    const th = tip.offsetHeight;
+    tip.style.left = `${Math.max(2, Math.min(box.width - tw - 2, px - tw / 2))}px`;
+    tip.style.top = py - th - 10 < 0 ? `${py + 12}px` : `${py - th - 10}px`;
+    tipKey = `${i}:${series}`;
+  };
+
+  // 히트 영역: 주차 세로 구간(모바일에서 누르기 쉬움) + 점별 원(PC 호버·정밀 탭)
+  const NS = "http://www.w3.org/2000/svg";
+  const hitLayer = document.createElementNS(NS, "g");
+  const colHalf = n === 1 ? iw / 2 : iw / (n - 1) / 2;
   for (let i = 0; i < n; i++) {
-    const r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    const half = n === 1 ? iw / 2 : iw / (n - 1) / 2;
-    r.setAttribute("x", x(i) - half);
+    const r = document.createElementNS(NS, "rect");
+    r.setAttribute("x", x(i) - colHalf);
     r.setAttribute("y", M.top);
-    r.setAttribute("width", half * 2);
+    r.setAttribute("width", colHalf * 2);
     r.setAttribute("height", ih);
     r.setAttribute("fill", "transparent");
     r.style.cursor = "pointer";
-    const show = () => {
-      const parts = [weeks[i].label];
-      parts.push(mine[i] != null ? `내 점수 ${mine[i]}` : "내 점수 없음");
-      if (avg[i] != null) parts.push(`전체 평균 ${avg[i]}`);
-      caption.textContent = parts.join(" · ");
-    };
-    r.addEventListener("click", show);
-    r.addEventListener("mouseenter", show);
+    r.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (tipKey === `${i}:both`) hide();
+      else show(i, "both");
+    });
     hitLayer.appendChild(r);
   }
+  const addDotHit = (i, series, v) => {
+    const c = document.createElementNS(NS, "circle");
+    c.setAttribute("cx", x(i));
+    c.setAttribute("cy", y(v));
+    c.setAttribute("r", "11");
+    c.setAttribute("fill", "transparent");
+    c.style.cursor = "pointer";
+    c.addEventListener("mouseenter", () => show(i, series));
+    c.addEventListener("mouseleave", hide);
+    c.addEventListener("click", (e) => {
+      e.stopPropagation();
+      show(i, series);
+    });
+    hitLayer.appendChild(c);
+  };
+  avg.forEach((v, i) => v != null && addDotHit(i, "avg", v));
+  mine.forEach((v, i) => v != null && addDotHit(i, "mine", v));
   svgEl.appendChild(hitLayer);
+  svgEl.addEventListener("click", hide); // 여백을 누르면 닫기
 
   // 범례 (2계열 → 항상 표시, 텍스트는 잉크 색)
   const legend = el("div", { class: "chart-legend" }, [
@@ -151,7 +172,12 @@ export function renderScoreChart(container, { weeks, mine, avg, yMax = 100 }) {
 
   container.appendChild(svg);
   container.appendChild(legend);
-  container.appendChild(caption);
+  container.appendChild(
+    el("div", {
+      class: "chart-caption",
+      text: "점에 마우스를 올리거나 그래프를 누르면 단원 이름과 점수가 나옵니다.",
+    })
+  );
 }
 
 // 점수 분포 히스토그램 (선생님 열람용): 만점 기준 10% 구간 막대
@@ -201,45 +227,4 @@ function legendLine(color, dashed) {
   }/>${dashed ? "" : `<circle cx="14" cy="5" r="3.5" fill="${color}" stroke="#ffffff" stroke-width="1.5"/>`}</svg>`;
 }
 
-// 단어 단위 줄바꿈 (한 줄 maxChars 이내, 최대 maxLines줄 — 넘치면 마지막 줄에 …)
-function wrapLabel(text, maxChars, maxLines = 3) {
-  const words = String(text).trim().split(/\s+/).filter(Boolean);
-  const lines = [];
-  let cur = "";
-  const push = () => {
-    if (cur) {
-      lines.push(cur);
-      cur = "";
-    }
-  };
-  for (let wd of words) {
-    while (wd.length > maxChars) {
-      push();
-      lines.push(wd.slice(0, maxChars));
-      wd = wd.slice(maxChars);
-    }
-    if (!wd) continue;
-    if (!cur) cur = wd;
-    else if (cur.length + 1 + wd.length <= maxChars) cur += " " + wd;
-    else {
-      push();
-      cur = wd;
-    }
-  }
-  push();
-  if (!lines.length) lines.push("");
-  if (lines.length > maxLines) {
-    const cut = lines.slice(0, maxLines);
-    cut[maxLines - 1] = cut[maxLines - 1].slice(0, Math.max(1, maxChars - 1)) + "…";
-    return cut;
-  }
-  return lines;
-}
 
-function escapeXML(s) {
-  return String(s)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
