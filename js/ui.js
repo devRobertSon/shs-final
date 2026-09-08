@@ -198,31 +198,67 @@ export function mdBlock(text, className = "md-body") {
   };
 
   const out = [];
-  let list = null; // { tag, items }
+  let list = null; // { tag, items, start }
   let quote = null;
   let para = [];
+  let table = null; // [[셀, ...], ...]
   const flushPara = () => {
     if (para.length) out.push(`<p>${para.map(inline).join("<br>")}</p>`);
     para = [];
   };
   const flushList = () => {
-    if (list) out.push(`<${list.tag}>${list.items.map((i) => `<li>${inline(i)}</li>`).join("")}</${list.tag}>`);
+    if (list) {
+      const start = list.tag === "ol" && list.start > 1 ? ` start="${list.start}"` : "";
+      out.push(`<${list.tag}${start}>${list.items.map((i) => `<li>${inline(i)}</li>`).join("")}</${list.tag}>`);
+    }
     list = null;
   };
   const flushQuote = () => {
     if (quote) out.push(`<blockquote>${quote.map(inline).join("<br>")}</blockquote>`);
     quote = null;
   };
+  const flushTable = () => {
+    if (!table) return;
+    let rows = table;
+    table = null;
+    let header = null;
+    // 2행이 |---|---| 구분선이면 1행은 머리글
+    if (rows.length >= 2 && rows[1].length && rows[1].every((c) => /^:?-{2,}:?$/.test(c))) {
+      header = rows[0];
+      rows = rows.slice(2);
+    }
+    const cells = (r, tag) => r.map((c) => `<${tag}>${inline(c)}</${tag}>`).join("");
+    out.push(
+      `<div class="table-wrap"><table>` +
+        (header ? `<tr>${cells(header, "th")}</tr>` : "") +
+        rows.map((r) => `<tr>${cells(r, "td")}</tr>`).join("") +
+        `</table></div>`
+    );
+  };
   const flushAll = () => {
     flushPara();
     flushList();
     flushQuote();
+    flushTable();
   };
   for (const raw of String(text || "").split(/\r?\n/)) {
     const line = raw.trimEnd();
     let m;
     if (!line.trim()) {
-      flushAll();
+      // 목록은 바로 닫지 않는다 — 빈 줄 뒤 같은 종류 항목이 이어지면 번호가 이어진다
+      flushPara();
+      flushQuote();
+      flushTable();
+      continue;
+    }
+    // 표: |로 시작하는 연속 줄 (| 셀 | 셀 | — 2행이 |---|이면 1행은 머리글)
+    if (line.trim().startsWith("|")) {
+      flushPara();
+      flushList();
+      flushQuote();
+      const t = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+      table = table || [];
+      table.push(t.split("|").map((c) => c.trim()));
       continue;
     }
     if ((m = line.match(/^(#{1,3})\s+(.*)$/))) {
@@ -238,6 +274,7 @@ export function mdBlock(text, className = "md-body") {
     if ((m = line.match(/^[-*]\s+(.*)$/))) {
       flushPara();
       flushQuote();
+      flushTable();
       if (!list || list.tag !== "ul") {
         flushList();
         list = { tag: "ul", items: [] };
@@ -245,25 +282,29 @@ export function mdBlock(text, className = "md-body") {
       list.items.push(m[1]);
       continue;
     }
-    if ((m = line.match(/^\d+[.)]\s+(.*)$/))) {
+    if ((m = line.match(/^(\d+)[.)]\s+(.*)$/))) {
       flushPara();
       flushQuote();
+      flushTable();
       if (!list || list.tag !== "ol") {
         flushList();
-        list = { tag: "ol", items: [] };
+        // 적힌 번호에서 시작 (1이 아니면 start 속성으로 반영)
+        list = { tag: "ol", items: [], start: parseInt(m[1], 10) || 1 };
       }
-      list.items.push(m[1]);
+      list.items.push(m[2]);
       continue;
     }
     if ((m = line.match(/^>\s?(.*)$/))) {
       flushPara();
       flushList();
+      flushTable();
       quote = quote || [];
       quote.push(m[1]);
       continue;
     }
     flushList();
     flushQuote();
+    flushTable();
     para.push(line);
   }
   flushAll();
