@@ -234,15 +234,15 @@ function renderDashboard() {
     }
   };
 
-  // 우선순위 순서: 해야 할 것(숙제) → 놓치면 안 되는 것(공지) → 확인할 것(퀴즈·리포트) → 기록 → 참고
+  // 탭 순서 (사용자 지정): 출석·진도 → 리포트 → 과학 숙제 → 수학 숙제 → 자료실 → 공지사항 → 퀴즈 → 질문·문의
   const tabDefs = [
+    { id: "att", label: "출석·진도" },
+    { id: "report", label: "리포트" },
     { id: "hw", label: "과학 숙제" },
     { id: "mathhw", label: "수학 숙제" },
+    { id: "material", label: "자료실" },
     { id: "notice", label: "공지사항" },
     { id: "quiz", label: "퀴즈" },
-    { id: "report", label: "리포트" },
-    { id: "att", label: "출석·진도" },
-    { id: "material", label: "자료실" },
   ];
   // 질문·문의 탭은 학원이 관리 페이지에서 폼 주소를 등록한 경우에만 표시
   if ((session.academy.qnaUrl || "").trim()) tabDefs.push({ id: "qna", label: "질문·문의" });
@@ -250,7 +250,7 @@ function renderDashboard() {
   root.appendChild(content);
 
   clear(app).appendChild(root);
-  tabs.select("hw");
+  tabs.select("att");
   for (const t of ["notice", "quiz", "report"]) tabs.setBadge(t, hasNew(t));
 }
 
