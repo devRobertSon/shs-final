@@ -230,6 +230,17 @@ textarea {
   line-height: 1.5;
   resize: vertical;
 }
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%231d54a8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 34px;
+  font-weight: 600;
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(42, 90, 180, 0.06);
+}
 input:focus,
 select:focus,
 textarea:focus {
@@ -287,7 +298,7 @@ div.field > span {
   padding: 12px 0 8px;
   border-bottom: none;
 }
-/* 포털용 래퍼: 탭이 잘려 있음을 좌우 페이드+화살표로 표시 (관리 페이지의 단독 .tabbar는 그대로) */
+/* 탭바 래퍼 — 학생 포털·관리 페이지 공용, 좌우 화살표 버튼의 기준 컨테이너 */
 .tabbar-wrap {
   position: sticky;
   top: 0;
@@ -296,35 +307,42 @@ div.field > span {
 .tabbar-wrap .tabbar {
   position: static;
 }
+/* 좌우 화살표 — 잘린 탭이 있을 때만 보이는 흰 원형 버튼, 누르면 그쪽으로 스크롤 */
 .tab-fade {
   position: absolute;
-  top: 1px;
-  bottom: 1px;
-  width: 34px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--accent-strong);
+  font-size: 18px;
+  font-weight: 700;
+  font-family: inherit;
+  line-height: 1;
   display: flex;
   align-items: center;
-  pointer-events: none;
+  justify-content: center;
+  box-shadow: 0 3px 10px rgba(42, 90, 180, 0.2);
+  cursor: pointer;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.15s;
-  color: var(--muted);
-  font-size: 20px;
-  line-height: 1;
+  z-index: 2;
 }
 .tab-fade.right {
   right: 0;
-  justify-content: flex-end;
-  padding-right: 2px;
-  background: linear-gradient(to left, var(--page) 35%, rgba(255, 255, 255, 0));
 }
 .tab-fade.left {
   left: 0;
-  justify-content: flex-start;
-  padding-left: 2px;
-  background: linear-gradient(to right, var(--page) 35%, rgba(255, 255, 255, 0));
 }
 .tabbar-wrap.more-right .tab-fade.right,
 .tabbar-wrap.more-left .tab-fade.left {
   opacity: 1;
+  pointer-events: auto;
 }
 .tabbar::-webkit-scrollbar {
   display: none;
