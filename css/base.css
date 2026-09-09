@@ -362,7 +362,7 @@ div.field > span {
   border-color: var(--accent);
   color: #fff;
   font-weight: 700;
-  box-shadow: 0 4px 12px rgba(42, 111, 208, 0.3);
+  box-shadow: 0 2px 6px rgba(42, 111, 208, 0.22);
 }
 /* 새 소식 배지 — 새 공지/퀴즈/리포트가 있는 탭에 표시 */
 .tab .tab-dot {
