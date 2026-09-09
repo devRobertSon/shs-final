@@ -236,3 +236,6 @@ GitHub 밖으로는 아무 정보도 나가지 않습니다.** 한 번만 설정
 - 암호화 셀프테스트: `http://localhost:8000/dev/test.html`
 - 샘플 데이터 재생성: `node dev/make-sample.mjs` (코드는 `dev/SAMPLE.md`에 기록)
 - 데이터 구조와 암호화 설계는 `js/crypto.js`, `js/store.js` 상단 주석 참고
+- 모바일 '보기': PDF 뷰어가 없는 브라우저(삼성 인터넷 등)에서는 내장 뷰어
+  (`js/pdfviewer.js` + vendored Mozilla pdf.js, `js/vendor/pdfjs/`)가 페이지 안에서
+  PDF를 직접 그려서 보여줍니다. PC 등 뷰어가 있는 브라우저는 새 탭으로 엽니다.

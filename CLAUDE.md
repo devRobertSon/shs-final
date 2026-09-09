@@ -72,6 +72,9 @@ GitHub Pages(main 브랜치, `Deploy from a branch`)로만 배포하며 **서버
 ## 제약 (변경 금지)
 
 - 순수 HTML/CSS/JS (ES 모듈). 빌드 도구·프레임워크·CDN·npm 의존성 금지.
+  - **승인된 예외**: `js/vendor/pdfjs/` — Mozilla pdf.js(Apache-2.0)를 원본 그대로 vendored.
+    모바일 '보기'용 내장 PDF 뷰어(`js/pdfviewer.js`)가 동적 import로만 사용한다
+    (2026-09-09 사용자 승인). 세부·업데이트 방법은 `js/vendor/pdfjs/README.md`.
 - `js/crypto.js`는 브라우저와 Node 22+ 양쪽에서 동작해야 한다 (`globalThis.crypto` 사용, `window` 참조 금지) — 샘플 생성기가 Node에서 같은 모듈을 사용한다.
 - 데이터 fetch는 `cache: "no-store"` + 타임스탬프 쿼리를 유지한다 (Pages CDN 캐시 회피).
 - 모바일 우선: 320px 폭까지 페이지 가로 넘침이 없어야 한다. 넓은 표는 `.table-wrap` 내부 스크롤 사용.

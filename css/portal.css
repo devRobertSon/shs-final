@@ -556,3 +556,53 @@ button.cal-day.sel {
   font-size: 12px;
   color: var(--ink-2);
 }
+
+/* ---------- 내장 PDF 뷰어 (PDF 표시가 안 되는 브라우저의 '보기') ---------- */
+.pdfv {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  background: var(--page);
+}
+.pdfv-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--brand-grad);
+  color: #fff;
+}
+.pdfv-title {
+  min-width: 0;
+  font-weight: 700;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pdfv-close {
+  flex: 0 0 auto;
+  background: rgba(255, 255, 255, 0.16);
+  border-color: transparent;
+  color: #fff;
+}
+.pdfv-pages {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 8px;
+  -webkit-overflow-scrolling: touch;
+}
+.pdfv-page {
+  display: block;
+  margin: 0 auto 10px;
+  max-width: 100%;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(20, 40, 90, 0.18);
+}
+body.pdfv-open {
+  overflow: hidden;
+}
