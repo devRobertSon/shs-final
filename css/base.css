@@ -291,21 +291,16 @@ div.field > span {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: var(--page);
+  background: transparent;
   padding: 12px 0 8px;
   border-bottom: none;
 }
-/* 탭바 래퍼 — 학생 포털·관리 페이지 공용, 좌우 화살표 버튼의 기준 컨테이너 */
+/* 탭바 래퍼 — 학생 포털·관리 페이지 공용. 고정(sticky) + 페이지 배경과 같은 단색 */
 .tabbar-wrap {
   position: sticky;
   top: 0;
   z-index: 20;
-}
-.tabbar-wrap .tabbar {
-  position: static;
+  background: var(--page);
 }
 /* 좌우 화살표 — 잘린 탭이 있을 때만 보이는 흰 원형 버튼, 누르면 그쪽으로 스크롤 */
 .tab-fade {
