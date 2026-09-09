@@ -239,7 +239,6 @@ select {
   padding-right: 34px;
   font-weight: 600;
   color: var(--ink);
-  box-shadow: 0 1px 3px rgba(42, 90, 180, 0.06);
 }
 input:focus,
 select:focus,
@@ -295,12 +294,10 @@ div.field > span {
   padding: 12px 0 8px;
   border-bottom: none;
 }
-/* 탭바 래퍼 — 학생 포털·관리 페이지 공용. 고정(sticky) + 페이지 배경과 같은 단색 */
+/* 탭바 래퍼 — 학생 포털·관리 페이지 공용. 배경 없음(페이지 배경이 그대로 보임),
+   좌우 화살표 버튼의 위치 기준 컨테이너 역할만 한다. */
 .tabbar-wrap {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: var(--page);
+  position: relative;
 }
 /* 좌우 화살표 — 잘린 탭이 있을 때만 보이는 흰 원형 버튼, 누르면 그쪽으로 스크롤 */
 .tab-fade {
@@ -355,14 +352,12 @@ div.field > span {
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: 0 1px 3px rgba(42, 90, 180, 0.06);
 }
 .tab.active {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
   font-weight: 700;
-  box-shadow: 0 2px 6px rgba(42, 111, 208, 0.22);
 }
 /* 새 소식 배지 — 새 공지/퀴즈/리포트가 있는 탭에 표시 */
 .tab .tab-dot {
