@@ -570,6 +570,10 @@ function statTile(label, value, sub) {
 }
 
 // ---------- 암호화 파일 행 (자료실·리포트 PDF 공용) ----------
+// '보기'의 모바일 사정: PDF 내장 뷰어가 없는 브라우저(삼성 인터넷·일부 인앱 브라우저)는
+// blob PDF를 새 탭에 열면 표시 대신 다운로드해 버린다. 그런 곳에서는 공유 시트로
+// 기기의 PDF 앱에 넘기고, 공유도 안 되면 저장 + 안내로 동작한다. 새 탭은 팝업
+// 차단을 피하려고 복호화가 끝나기 전(터치 직후)에 미리 연다.
 function fileRow({ title, metaText, entry, key }) {
   const viewBtn = el("button", { class: "btn btn-small", text: "보기" });
   const saveBtn = el("button", { class: "btn btn-small", text: "저장" });
@@ -577,23 +581,49 @@ function fileRow({ title, metaText, entry, key }) {
     viewBtn.disabled = b;
     saveBtn.disabled = b;
   };
+  const fileName = entry.origName || title;
+  const saveAs = (url) => {
+    const a = el("a", { href: url, download: fileName });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
   const open = async (mode) => {
     busy(true);
+    const isPdf =
+      String(entry.mime || "").includes("pdf") || /\.pdf$/i.test(fileName);
+    const inlineOk = !(isPdf && navigator.pdfViewerEnabled === false);
+    const win = mode === "view" && inlineOk ? window.open("", "_blank") : null;
     toast("파일을 여는 중입니다…");
     try {
       const blob = await loadMaterial(entry, key);
       const url = URL.createObjectURL(blob);
       blobURLs.push(url);
-      if (mode === "view") {
-        window.open(url, "_blank");
+      if (mode === "view" && win) {
+        win.location.href = url;
+      } else if (mode === "view") {
+        // 새 탭 표시 불가(뷰어 없음/팝업 차단) → 공유 시트로 기기 앱에 넘기기
+        const file = new File([blob], fileName, { type: blob.type });
+        let handled = false;
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file], title: fileName });
+            handled = true;
+          } catch (e) {
+            // 사용자가 공유 시트를 닫은 것 — 조용히 종료
+            if (e && e.name === "AbortError") handled = true;
+          }
+        }
+        if (!handled) {
+          saveAs(url);
+          toast("이 브라우저는 파일을 바로 표시할 수 없어 저장했습니다. 저장된 파일을 열어 보세요.", "ok");
+        }
       } else {
-        const a = el("a", { href: url, download: entry.origName || title });
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
+        saveAs(url);
       }
     } catch (e) {
       console.error(e);
+      if (win) win.close();
       toast("파일을 불러오지 못했습니다.", "error");
     }
     busy(false);
