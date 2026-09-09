@@ -285,9 +285,6 @@ div.field > span {
 }
 
 /* ---------- 탭 ---------- */
-/* 탭 줄 자체는 투명 — 배경은 아래 래퍼가 반투명(블러)으로 깐다.
-   단색 띠를 깔면 기기 설정(자동 다크 모드 등)에 따라 페이지 배경과 미세하게 달라
-   사각형 띠로 보일 수 있어서, 뒤가 그대로 비치는 반투명으로 어떤 배경에서도 자연스럽게. */
 .tabbar {
   display: flex;
   gap: 8px;
@@ -298,19 +295,12 @@ div.field > span {
   padding: 12px 0 8px;
   border-bottom: none;
 }
-/* 탭바 래퍼 — 학생 포털·관리 페이지 공용. 고정(sticky) + 젖빛 유리 배경 */
+/* 탭바 래퍼 — 학생 포털·관리 페이지 공용. 고정(sticky) + 페이지 배경과 같은 단색 */
 .tabbar-wrap {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: rgba(238, 243, 251, 0.72);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-}
-@supports not ((backdrop-filter: blur(10px)) or (-webkit-backdrop-filter: blur(10px))) {
-  .tabbar-wrap {
-    background: var(--page);
-  }
+  background: var(--page);
 }
 /* 좌우 화살표 — 잘린 탭이 있을 때만 보이는 흰 원형 버튼, 누르면 그쪽으로 스크롤 */
 .tab-fade {
