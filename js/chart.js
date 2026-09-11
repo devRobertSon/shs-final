@@ -20,7 +20,7 @@ export function renderScoreChart(container, { weeks, mine, avg, yMax = 100 }) {
   const n = weeks.length;
   if (!n || mine.every((v) => v == null)) {
     container.appendChild(
-      el("p", { class: "empty", text: "아직 표시할 퀴즈 점수가 없습니다." })
+      el("p", { class: "empty", text: "아직 표시할 평가 점수가 없습니다." })
     );
     return;
   }
