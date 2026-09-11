@@ -166,12 +166,12 @@ export function isoWeekId(date) {
 
 // 평가 분류 — 표시 순서 그대로 학생 화면의 선택 바에 나온다.
 export const QUIZ_CATEGORIES = [
-  { id: "sci", label: "과학 퀴즈" },
   { id: "counsel-sci", label: "면담평가 - 과학" },
   { id: "counsel-math", label: "면담평가 - 수학" },
   { id: "counsel-human", label: "면담평가 - 인성" },
   { id: "interview-math", label: "면접평가 - 수학" },
   { id: "interview-sci", label: "면접평가 - 과학" },
+  { id: "sci", label: "과학 퀴즈" },
 ];
 export function quizCategory(q) {
   return QUIZ_CATEGORIES.some((c) => c.id === q?.category) ? q.category : "sci";
