@@ -156,12 +156,29 @@ export function isoWeekId(date) {
   return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
 }
 
-// ---------- 단원별 퀴즈 ----------
-// 학원 blob: quizzes[] = {id, unit(단원명), weekId(응시 주차), max(만점), stats:{avg,count}|null}
-// 학생 blob: quizzes = {퀴즈ID: 점수}, quizzesNoClass = {퀴즈ID: true} → 미수강 응시(점수 기록·평균 제외),
-//            quizReports = {퀴즈ID: {pdf?:{path,origName,size,mime}, note?:string}} — 단원(퀴즈) 리포트
-//            weekReports = {주차ID: {pdf?, note?}} — 수업 리포트 (퀴즈 없는 면담·면접 수업 포함, 형식 동일)
-// 한 주차에 여러 단원 퀴즈가 있을 수 있다. 정렬은 응시 주차 순 → 같은 주차는 등록 순.
+// ---------- 평가 (구 '퀴즈' — 내부 키는 호환을 위해 quiz 유지) ----------
+// 학원 blob: quizzes[] = {id, unit(단원명), weekId(응시 주차), max(만점), stats:{avg,count}|null,
+//                         category?(평가 분류 id — 없으면 "sci" 과학 퀴즈로 취급, 기존 데이터 호환)}
+// 학생 blob: quizzes = {평가ID: 점수}, quizzesNoClass = {평가ID: true} → 미수강 응시(점수 기록·평균 제외),
+//            quizReports = {평가ID: {pdf?:{path,origName,size,mime}, note?:string}} — 단원(평가) 리포트
+//            weekReports = {주차ID: {pdf?, note?}} — 수업 리포트 (평가 없는 면담·면접 수업 포함, 형식 동일)
+// 한 주차에 여러 평가가 있을 수 있다. 정렬은 응시 주차 순 → 같은 주차는 등록 순.
+
+// 평가 분류 — 표시 순서 그대로 학생 화면의 선택 바에 나온다.
+export const QUIZ_CATEGORIES = [
+  { id: "sci", label: "과학 퀴즈" },
+  { id: "counsel-sci", label: "면담평가 - 과학" },
+  { id: "counsel-math", label: "면담평가 - 수학" },
+  { id: "counsel-human", label: "면담평가 - 인성" },
+  { id: "interview-math", label: "면접평가 - 수학" },
+  { id: "interview-sci", label: "면접평가 - 과학" },
+];
+export function quizCategory(q) {
+  return QUIZ_CATEGORIES.some((c) => c.id === q?.category) ? q.category : "sci";
+}
+export function quizCategoryLabel(q) {
+  return QUIZ_CATEGORIES.find((c) => c.id === quizCategory(q)).label;
+}
 export function sortQuizzes(quizzes, weeks) {
   const order = new Map(sortWeeks(weeks).map((w, i) => [w.id, i]));
   return [...(quizzes || [])]

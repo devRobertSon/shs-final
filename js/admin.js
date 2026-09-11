@@ -17,7 +17,7 @@ import {
   normalizePassword,
   b64encode,
 } from "./crypto.js";
-import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, isoWeekIdAfter, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER, isNoShow, isNA, triState, mathCell, mathDatesForWeek, WEEK_TYPES, weekType, weekDisplayLabel, prevWeekOfType } from "./store.js";
+import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, isoWeekIdAfter, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER, isNoShow, isNA, triState, mathCell, mathDatesForWeek, WEEK_TYPES, weekType, weekDisplayLabel, prevWeekOfType, QUIZ_CATEGORIES, quizCategory, quizCategoryLabel } from "./store.js";
 import { $, el, clear, toast, confirmModal, copyText, setBusy, mdBlock, attachTabScroller } from "./ui.js";
 import { runWizard, createStudent, emptyStudentBlob, emptyAcademyBlob, printCodeCards } from "./setup.js";
 import { buildDirectorReport } from "./report.js";
@@ -546,7 +546,7 @@ function toggleDropped(st) {
     toast(
       `${st.name} 학생을 드랍으로 표시했습니다.` +
         (n ? ` 오늘부터의 수업일 ${n}칸을 '드랍'으로 채웠고,` : " 앞으로") +
-        " 새로 만드는 수업일·숙제·퀴즈는 자동으로 드랍(D)·해당 없음(－)·미응시 처리됩니다. '발행'해야 반영됩니다.",
+        " 새로 만드는 수업일·숙제·평가는 자동으로 드랍(D)·해당 없음(－)·미응시 처리됩니다. '발행'해야 반영됩니다.",
       "ok"
     );
   } else {
@@ -607,15 +607,20 @@ function academyQuizzes(fileId = S.selAcademy) {
   return sortQuizzes(blob.quizzes, blob.weeks);
 }
 
-// 퀴즈(단원) 생성/편집/삭제 모달
+// 평가(단원) 생성/편집/삭제 모달
 // 응시 주차는 '미정'(weekId=null)으로 둘 수 있다 — 두 학원의 응시 시점이 다르거나
-// 아직 날짜를 정하지 않은 퀴즈를 미리 등록하는 용도. 나중에 여기서 주차를 지정한다.
+// 아직 날짜를 정하지 않은 평가를 미리 등록하는 용도. 나중에 여기서 주차를 지정한다.
 function editQuiz(quiz) {
   const blob = academyBlob();
   const weeks = sortWeeks(blob.weeks);
   const unitIn = el("input", { type: "text", value: quiz?.unit || "", placeholder: "단원명 (예: 화학 — 몰 농도)" });
+  // 분류 — 기존 평가(category 없음)는 과학 퀴즈. 학생 화면의 선택 바에서 분류별로 나뉘어 보인다.
+  const catSel = el("select");
+  for (const c of QUIZ_CATEGORIES) {
+    catSel.appendChild(el("option", { value: c.id, text: c.label, selected: c.id === quizCategory(quiz) }));
+  }
   const weekSel = el("select");
-  // 기존 퀴즈는 저장된 주차(없으면 미정), 새 퀴즈는 현재 선택된 주차를 기본값으로
+  // 기존 평가는 저장된 주차(없으면 미정), 새 평가는 현재 선택된 주차를 기본값으로
   const defaultWeek = quiz ? quiz.weekId || "" : selectedWeek()?.id || "";
   weekSel.appendChild(el("option", { value: "", text: "주차 미정 (나중에 지정)", selected: defaultWeek === "" }));
   for (const w of weeks) {
@@ -623,7 +628,7 @@ function editQuiz(quiz) {
   }
   const maxIn = el("input", { type: "number", value: String(quiz?.max || 100), min: "1" });
   const halfChk = el("input", { type: "checkbox", checked: !!quiz?.half });
-  // 새 퀴즈에서 만점을 평소의 2배(28점)로 입력하면 절반 환산을 자동 제안
+  // 새 평가에서 만점을 평소의 2배(28점)로 입력하면 절반 환산을 자동 제안
   maxIn.addEventListener("input", () => {
     if (!quiz && parseFloat(maxIn.value) === 28) halfChk.checked = true;
   });
@@ -631,17 +636,18 @@ function editQuiz(quiz) {
   const overlay = el("div", { class: "modal-overlay" });
   overlay.appendChild(
     el("div", { class: "modal" }, [
-      el("h3", { text: quiz ? "퀴즈 관리" : "새 단원 퀴즈" }),
+      el("h3", { text: quiz ? "평가 관리" : "새 평가" }),
       el("p", {
         class: "hint",
-        text: "퀴즈는 학원마다 따로 만듭니다. 두 학원에서 단원명을 똑같이 쓰면(만점·2배 출제도 동일하게) 전체 평균이 두 학원 학생을 합쳐 계산됩니다.",
+        text: "평가는 학원마다 따로 만듭니다. 두 학원에서 분류·단원명을 똑같이 쓰면(만점·2배 출제도 동일하게) 전체 평균이 두 학원 학생을 합쳐 계산됩니다.",
       }),
+      el("label", { class: "field" }, [el("span", { text: "분류" }), catSel]),
       el("label", { class: "field" }, [el("span", { text: "단원명" }), unitIn]),
       el("label", { class: "field" }, [el("span", { text: "응시 주차" }), weekSel]),
       el("label", { class: "field" }, [el("span", { text: "만점" }), maxIn]),
       el("label", { class: "check" }, [
         halfChk,
-        "2배 출제 — 점수·평균을 절반으로 환산해 표시 (예: 만점 28점 퀴즈를 14점 기준으로)",
+        "2배 출제 — 점수·평균을 절반으로 환산해 표시 (예: 만점 28점 평가를 14점 기준으로)",
       ]),
       err,
       el("div", { class: "modal-actions" }, [
@@ -652,8 +658,8 @@ function editQuiz(quiz) {
               onclick: async () => {
                 overlay.remove();
                 const ok = await confirmModal({
-                  title: "퀴즈 삭제",
-                  body: `'${quiz.unit}' 퀴즈를 삭제할까요? 모든 학생의 이 퀴즈 점수와 단원 리포트(PDF 포함)가 함께 삭제됩니다.`,
+                  title: "평가 삭제",
+                  body: `'${quiz.unit}' 평가를 삭제할까요? 모든 학생의 이 평가 점수와 단원 리포트(PDF 포함)가 함께 삭제됩니다.`,
                   okText: "삭제",
                   danger: true,
                 });
@@ -671,18 +677,30 @@ function editQuiz(quiz) {
             const unit = unitIn.value.trim();
             const max = parseFloat(maxIn.value) || 100;
             const weekId = weekSel.value || null; // "" = 주차 미정
+            const cat = catSel.value; // "sci"는 저장하지 않음 (기존 데이터 형식 유지)
             if (!unit) return (err.textContent = "단원명을 입력해 주세요.");
             if (quiz) {
-              if (quiz.unit !== unit || quiz.weekId !== weekId || quiz.max !== max || !!quiz.half !== halfChk.checked) {
+              if (
+                quiz.unit !== unit || quiz.weekId !== weekId || quiz.max !== max ||
+                !!quiz.half !== halfChk.checked || quizCategory(quiz) !== cat
+              ) {
                 quiz.unit = unit;
                 quiz.weekId = weekId;
                 quiz.max = max;
                 if (halfChk.checked) quiz.half = true;
                 else delete quiz.half;
+                if (cat === "sci") delete quiz.category;
+                else quiz.category = cat;
                 markAcademy(S.selAcademy);
+                recomputeStats();
               }
             } else {
-              const q = { id: randomHexId(6), unit, weekId, max, ...(halfChk.checked ? { half: true } : {}), stats: null };
+              const q = {
+                id: randomHexId(6), unit, weekId, max,
+                ...(cat === "sci" ? {} : { category: cat }),
+                ...(halfChk.checked ? { half: true } : {}),
+                stats: null,
+              };
               blob.quizzes = blob.quizzes || [];
               blob.quizzes.push(q);
               markDroppedForNewQuiz(S.selAcademy, q.id);
@@ -699,7 +717,7 @@ function editQuiz(quiz) {
   unitIn.focus();
 }
 
-// 퀴즈 삭제: 정의 + 모든 학생의 점수·단원 리포트(PDF 정리 포함)
+// 평가 삭제: 정의 + 모든 학생의 점수·단원 리포트(PDF 정리 포함)
 function deleteQuiz(quiz) {
   const blob = academyBlob();
   blob.quizzes = (blob.quizzes || []).filter((q) => q.id !== quiz.id);
@@ -724,7 +742,7 @@ function deleteQuiz(quiz) {
     if (touched) markStudent(st.fileId);
   }
   recomputeStats();
-  toast(`'${quiz.unit}' 퀴즈가 삭제되었습니다. '발행'해야 반영됩니다.`, "ok");
+  toast(`'${quiz.unit}' 평가가 삭제되었습니다. '발행'해야 반영됩니다.`, "ok");
 }
 
 function toolbar(container, { withWeek = true } = {}) {
@@ -881,7 +899,7 @@ function manageWeeks() {
       el("div", { class: "card", style: "padding:10px" }, [
         el("div", { class: "hint", text: `ID: ${w.id}` }),
         el("label", { class: "field" }, [el("span", { text: "수업 종류" }), typeSel]),
-        el("p", { class: "hint", text: "회차별 입력·보고서의 '지난 주' 숙제·퀴즈는 같은 종류(과학/면담/면접)의 주차끼리 이어집니다." }),
+        el("p", { class: "hint", text: "회차별 입력·보고서의 '지난 주' 숙제·평가는 같은 종류(과학/면담/면접)의 주차끼리 이어집니다." }),
         el("label", { class: "field" }, [el("span", { text: "주차 이름" }), labelIn]),
         el("div", { class: "field" }, [el("span", { text: "수업일 (달력에서 선택)" }), calBox, sumLine]),
         el("div", { class: "item-row" }, [
@@ -1058,7 +1076,7 @@ function renderStudentsTab(container) {
           markRoster();
           toast(
             `${name} 학생이 추가되었습니다. 코드: ${rosterEntry.code}` +
-              (marked ? " · 기존 주차·퀴즈는 '수강 전'으로 자동 표시했습니다." : ""),
+              (marked ? " · 기존 주차·평가는 '수강 전'으로 자동 표시했습니다." : ""),
             "ok"
           );
           renderTab();
@@ -1072,7 +1090,7 @@ function renderStudentsTab(container) {
   card.appendChild(
     el("p", {
       class: "hint",
-      text: "이 코드로 학생 포털에 로그인하면 해당 학원의 출석 현황, 숙제 체크, 학생별 성적표, 퀴즈 점수 분포, 개별 리포트(전달사항+PDF 첨부 여부), 공지를 볼 수 있습니다. 편집은 불가능합니다.",
+      text: "이 코드로 학생 포털에 로그인하면 해당 학원의 출석 현황, 숙제 체크, 학생별 성적표, 평가 점수 분포, 개별 리포트(전달사항+PDF 첨부 여부), 공지를 볼 수 있습니다. 편집은 불가능합니다.",
     })
   );
   S.roster.teachers = S.roster.teachers || [];
@@ -1352,17 +1370,17 @@ async function rotateAcademyKey(oldFileId) {
   markRoster();
 }
 
-// ---------- 퀴즈 점수 입력 카드 — 회차별 입력 탭 ③에서 사용 ----------
-function scoresCard(quiz, { title = "퀴즈 점수 입력" } = {}) {
+// ---------- 평가 점수 입력 카드 — 회차별 입력 탭 ③에서 사용 ----------
+function scoresCard(quiz, { title = "평가 점수 입력" } = {}) {
   const card = el("div", { class: "card" }, [el("h2", { text: title })]);
   card.appendChild(
-    el("p", { class: "hint", text: `단원: ${quiz.unit} · 응시 주차: ${weekLabelOf(academyBlob().weeks, quiz.weekId) || "미정"} · 만점 ${quiz.max}점 (변경은 '퀴즈 관리')` })
+    el("p", { class: "hint", text: `${quizCategoryLabel(quiz)} · 단원: ${quiz.unit} · 응시 주차: ${weekLabelOf(academyBlob().weeks, quiz.weekId) || "미정"} · 만점 ${quiz.max}점 (변경은 '평가 관리')` })
   );
   if (quiz.half) {
     card.appendChild(
       el("p", {
         class: "hint",
-        text: `2배 출제 퀴즈 — 점수는 원점수(만점 ${quiz.max}점)로 입력하세요. 학생·보고서 화면에는 절반(만점 ${quiz.max / 2}점 기준)으로 환산되어 표시됩니다.`,
+        text: `2배 출제 평가 — 점수는 원점수(만점 ${quiz.max}점)로 입력하세요. 학생·보고서 화면에는 절반(만점 ${quiz.max / 2}점 기준)으로 환산되어 표시됩니다.`,
       })
     );
   }
@@ -1487,7 +1505,7 @@ function scoresCard(quiz, { title = "퀴즈 점수 입력" } = {}) {
     card.appendChild(
       el("p", {
         class: "hint",
-        text: `이 주차 출석부에 결석·공결 기록이 있는 학생: ${absentish.join(", ")} — 퀴즈를 보지 않았다면 [미응시]로 표시하세요.`,
+        text: `이 주차 출석부에 결석·공결 기록이 있는 학생: ${absentish.join(", ")} — 평가를 보지 않았다면 [미응시]로 표시하세요.`,
       })
     );
   }
@@ -1523,7 +1541,7 @@ function scoresCard(quiz, { title = "퀴즈 점수 입력" } = {}) {
   card.appendChild(
     el("p", {
       class: "hint",
-      text: "[미수강] = 수업을 듣지 않은 상태에서 응시한 퀴즈 — 점수는 기록되지만 학원·전체 평균과 분포에서 제외되고, 학생·학부모 화면에 '미수강'으로 표시됩니다.",
+      text: "[미수강] = 수업을 듣지 않은 상태에서 응시한 평가 — 점수는 기록되지만 학원·전체 평균과 분포에서 제외되고, 학생·학부모 화면에 '미수강'으로 표시됩니다.",
     })
   );
   card.appendChild(el("div", { class: "toolbar" }, [avgLine]));
@@ -1532,7 +1550,7 @@ function scoresCard(quiz, { title = "퀴즈 점수 입력" } = {}) {
     el("button", {
       class: "btn btn-primary btn-block",
       style: "margin-top:12px",
-      text: "이 퀴즈 점수 저장",
+      text: "이 평가 점수 저장",
       onclick: () => {
         let changed = 0;
         for (const st of students) {
@@ -1588,17 +1606,17 @@ function scoresCard(quiz, { title = "퀴즈 점수 입력" } = {}) {
   return card;
 }
 
-// 퀴즈별 전체 평균/응시 인원 재계산 (quizzes[].stats)
-// 단원명이 같은 퀴즈는 **모든 학원의 학생을 합쳐** 전체 평균을 계산한다.
+// 평가별 전체 평균/응시 인원 재계산 (quizzes[].stats)
+// 분류와 단원명이 같은 평가는 **모든 학원의 학생을 합쳐** 전체 평균을 계산한다.
 // (학원 blob에는 합산된 평균·인원 숫자만 저장되므로 타 학원 개인 정보는 노출되지 않음)
 function recomputeStats() {
   const norm = (s) => String(s || "").trim().replace(/\s+/g, " ");
-  // 단원명 → 전 학원 합산 점수 풀
+  // 분류|단원명 → 전 학원 합산 점수 풀
   const pool = new Map();
   for (const a of S.roster.academies) {
     const blob = S.academies.get(a.fileId);
     for (const q of blob?.quizzes || []) {
-      const key = norm(q.unit);
+      const key = quizCategory(q) + "|" + norm(q.unit);
       const arr = pool.get(key) || [];
       for (const st of activeStudentsOf(a.fileId)) {
         const sBlob = S.students.get(st.fileId);
@@ -1612,7 +1630,7 @@ function recomputeStats() {
   for (const a of S.roster.academies) {
     const blob = S.academies.get(a.fileId);
     for (const q of blob?.quizzes || []) {
-      const scores = pool.get(norm(q.unit)) || [];
+      const scores = pool.get(quizCategory(q) + "|" + norm(q.unit)) || [];
       const prev = JSON.stringify(q.stats || null);
       q.stats = scores.length
         ? {
@@ -1627,7 +1645,7 @@ function recomputeStats() {
 
 // ---------- ②½ 회차별 입력 (기본 탭) ----------
 // 한 주 수업의 실제 흐름 순서대로 한 페이지에서 입력한다:
-// ① 지난 주 숙제 체크 → ② 지난 주 퀴즈 점수 → ③ 이번 주 출석 → ④ 진도 → ⑤ 숙제 입력 → ⑥ 퀴즈 등록
+// ① 지난 주 숙제 체크 → ② 지난 수학 숙제 → ③ 지난 주 평가 점수 → ④ 출석 → ⑤ 진도 → ⑥ 숙제 입력 → ⑦ 평가 등록
 function renderWeeklyTab(container) {
   toolbar(container);
   const week = selectedWeek();
@@ -1651,7 +1669,7 @@ function renderWeeklyTab(container) {
     el("p", {
       class: "hint",
       style: "margin:4px 2px 10px",
-      text: `${weekDisplayLabel(week)} 수업 기준 한 페이지 입력입니다 — 지난 ${isSci ? "주" : tl}(${prev ? prev.label : "없음"}) 숙제·퀴즈 확인부터 이번 주 기록까지 순서대로 진행하세요.`,
+      text: `${weekDisplayLabel(week)} 수업 기준 한 페이지 입력입니다 — 지난 ${isSci ? "주" : tl}(${prev ? prev.label : "없음"}) 숙제·평가 확인부터 이번 주 기록까지 순서대로 진행하세요.`,
     })
   );
 
@@ -1673,18 +1691,18 @@ function renderWeeklyTab(container) {
     );
   }
 
-  // ③ 지난 주(같은 종류) 퀴즈 점수 입력
+  // ③ 지난 주(같은 종류) 평가 점수 입력
   const prevQuizzes = prev ? (academyBlob().quizzes || []).filter((q) => q.weekId === prev.id) : [];
   if (prevQuizzes.length) {
     for (const q of prevQuizzes) {
-      container.appendChild(scoresCard(q, { title: `③ 지난 주 퀴즈 점수 — ${q.unit}` }));
+      container.appendChild(scoresCard(q, { title: `③ 지난 주 평가 점수 — ${q.unit}` }));
     }
   } else {
     container.appendChild(
       emptyCard(
-        "③ 지난 주 퀴즈 점수 입력",
+        "③ 지난 주 평가 점수 입력",
         prev
-          ? "지난 주차에 등록된 단원 퀴즈가 없습니다."
+          ? "지난 주차에 등록된 평가가 없습니다."
           : isSci
             ? "이전 주차가 없습니다 (첫 주차)."
             : `이전 ${tl} 주차가 없습니다 (첫 ${tl}).`
@@ -1705,25 +1723,25 @@ function renderWeeklyTab(container) {
   );
   container.appendChild(hwCard);
 
-  // ⑦ 이번 주 퀴즈(범위) 등록
-  const qCard = el("div", { class: "card" }, [el("h2", { text: `⑦ 이번 주 퀴즈 등록 — ${week.label}` })]);
+  // ⑦ 이번 주 평가(범위) 등록
+  const qCard = el("div", { class: "card" }, [el("h2", { text: `⑦ 이번 주 평가 등록 — ${week.label}` })]);
   qCard.appendChild(
-    el("p", { class: "hint", text: "이번 주에 볼 단원 퀴즈를 등록해 두면, 다음 주 ③에서 점수를 입력하게 됩니다." })
+    el("p", { class: "hint", text: "이번 주에 볼 평가(과학 퀴즈·면담평가·면접평가)를 등록해 두면, 다음 주 ③에서 점수를 입력하게 됩니다." })
   );
   const thisQuizzes = (academyBlob().quizzes || []).filter((q) => q.weekId === week.id);
-  if (!thisQuizzes.length) qCard.appendChild(el("p", { class: "empty", text: "이번 주차에 등록된 퀴즈가 없습니다." }));
+  if (!thisQuizzes.length) qCard.appendChild(el("p", { class: "empty", text: "이번 주차에 등록된 평가가 없습니다." }));
   for (const q of thisQuizzes) {
     qCard.appendChild(
       el("div", { class: "student-row" }, [
         el("span", { class: "s-name", text: q.unit }),
-        el("span", { class: "hint", text: `만점 ${q.max}점${q.half ? " · 2배 출제(절반 표시)" : ""}` }),
+        el("span", { class: "hint", text: `${quizCategoryLabel(q)} · 만점 ${q.max}점${q.half ? " · 2배 출제(절반 표시)" : ""}` }),
         el("span", { class: "s-actions" }, [
           el("button", { class: "btn btn-small", text: "수정", onclick: () => editQuiz(q) }),
         ]),
       ])
     );
   }
-  qCard.appendChild(el("button", { class: "btn btn-primary btn-small", text: "+ 새 퀴즈", onclick: () => editQuiz(null) }));
+  qCard.appendChild(el("button", { class: "btn btn-primary btn-small", text: "+ 새 평가", onclick: () => editQuiz(null) }));
   container.appendChild(qCard);
 }
 
@@ -2195,7 +2213,7 @@ function attendanceCard(week, { title = "출석 체크" } = {}) {
   return card;
 }
 
-// ---------- ⑤ 리포트 (수업별 — 퀴즈 연결 선택) ----------
+// ---------- ⑤ 리포트 (수업별 — 평가 연결 선택) ----------
 // 리포트는 수업(주차)에 붙는다. 그 수업에 퀴즈가 있으면 퀴즈를 골라 단원 리포트를,
 // '수업 리포트'를 골라 수업 자체(면담·면접 포함)에 대한 리포트를 학생별로 쓴다.
 // 저장 위치: 퀴즈 연결 → student.quizReports[quizId] (기존 형식 그대로) /
@@ -2221,9 +2239,9 @@ function renderReportsTab(container) {
   const quiz = target ? weekQuizzes.find((q) => q.id === target) : null;
 
   const tSel = el("select", { "aria-label": "리포트 대상 선택" });
-  tSel.appendChild(el("option", { value: "", text: "수업 리포트 (퀴즈 연결 없음)", selected: !quiz }));
+  tSel.appendChild(el("option", { value: "", text: "수업 리포트 (평가 연결 없음)", selected: !quiz }));
   for (const q of weekQuizzes) {
-    tSel.appendChild(el("option", { value: q.id, text: `퀴즈: ${q.unit}`, selected: !!quiz && q.id === quiz.id }));
+    tSel.appendChild(el("option", { value: q.id, text: `${quizCategoryLabel(q)}: ${q.unit}`, selected: !!quiz && q.id === quiz.id }));
   }
   tSel.addEventListener("change", () => {
     S.selReport.set(S.selAcademy, tSel.value);
@@ -2236,7 +2254,7 @@ function renderReportsTab(container) {
       text: quiz
         ? `단원: ${quiz.unit} · 수업: ${weekDisplayLabel(week)}`
         : `수업: ${weekDisplayLabel(week)} — 이 수업 자체에 대한 학생별 리포트입니다.` +
-          (weekQuizzes.length ? "" : " (이 수업에 등록된 퀴즈 없음)"),
+          (weekQuizzes.length ? "" : " (이 수업에 등록된 평가 없음)"),
     })
   );
   // 학생 전원을 이름순으로 한 페이지에 나열 — 한 명씩 넘기지 않고 바로 입력한다
@@ -3094,7 +3112,7 @@ async function buildPublishFiles(mode) {
     }
     blob.name = st.name;
   }
-  // 2) 전체 평균 재계산 (단원명이 같은 퀴즈는 전 학원 학생 합산)
+  // 2) 전체 평균 재계산 (분류·단원명이 같은 평가는 전 학원 학생 합산)
   recomputeStats();
 
   // 3) meta 갱신

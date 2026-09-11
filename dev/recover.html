@@ -222,10 +222,10 @@
             }
           }
 
-          // ---- 퀴즈 점수 (학생 × 퀴즈) ----
-          card.appendChild(el("h3", { text: "퀴즈 점수" }));
+          // ---- 평가 점수 (학생 × 평가) ----
+          card.appendChild(el("h3", { text: "평가 점수" }));
           if (!quizzes.length || !students.length) {
-            card.appendChild(el("p", { class: "empty", text: "퀴즈 또는 학생 없음" }));
+            card.appendChild(el("p", { class: "empty", text: "평가 또는 학생 없음" }));
           } else {
             const head = el("tr", {}, [
               el("th", { class: "name", text: "학생" }),

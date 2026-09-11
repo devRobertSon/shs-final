@@ -5,7 +5,7 @@ import { el, mdBlock } from "./ui.js";
 import { sortWeeks, sortQuizzes, ATTENDANCE, ATTENDANCE_ORDER, toYMD, isNoShow, isNA, mathCell, mathDatesForWeek, dispScore, dispMax, prevWeekOfType, weekDisplayLabel } from "./store.js";
 
 // 입력:
-//   academyName, weeks(학원 blob), quizzes(학원 blob의 단원 퀴즈 목록),
+//   academyName, weeks(학원 blob), quizzes(학원 blob의 평가 목록),
 //   weekId(보고 대상 주차 W), students: [{name, blob}] (활성 학생),
 //   notices(학원 blob), mathDates(학원 blob의 수학 수업 날짜 목록),
 //   mathTotals(학원 blob의 날짜별 전체 문제 수),
@@ -186,7 +186,7 @@ export function buildDirectorReport({
     };
 
   if (!P) {
-    info("이전 주차가 없어 숙제·퀴즈 섹션은 표시되지 않습니다 (첫 주차).");
+    info("이전 주차가 없어 숙제·평가 섹션은 표시되지 않습니다 (첫 주차).");
     // 첫 주차여도 이 주차에 귀속된 수학 숙제 날짜가 있으면 수학만 따로 싣는다
     if (mDates.length) {
       const kids = [];
@@ -307,21 +307,21 @@ export function buildDirectorReport({
     }
     doc.appendChild(section(`지난 주 숙제 수행 — ${weekDisplayLabel(P)}`, hwChildren));
 
-    // ---------- ④ 지난 주 단원 퀴즈 결과 + 자동 분석 (P) ----------
+    // ---------- ④ 지난 주 평가 결과 + 자동 분석 (P) ----------
     const quizChildren = [];
     const quizzesP = allQuizzes.filter((q) => q.weekId === P.id);
 
-    // 추이 데이터: P 주차까지 응시한 모든 단원 퀴즈의 반 평균
+    // 추이 데이터: P 주차까지 응시한 모든 평가의 반 평균
     const trendData = allQuizzes
       .filter((q) => weekOrder.has(q.weekId) && weekOrder.get(q.weekId) <= weekOrder.get(P.id))
       .map((q) => ({ label: q.unit, avg: quizAvg(q, students), isP: q.weekId === P.id }))
       .filter((d) => d.avg != null);
 
     if (!quizzesP.length) {
-      warn(`지난 주(${weekDisplayLabel(P)})에 등록된 단원 퀴즈가 없습니다.`);
-      quizChildren.push(el("p", { class: "rd-empty", text: "(지난 주 퀴즈 없음)" }));
+      warn(`지난 주(${weekDisplayLabel(P)})에 등록된 평가가 없습니다.`);
+      quizChildren.push(el("p", { class: "rd-empty", text: "(지난 주 평가 없음)" }));
     } else {
-      // 퀴즈별 통계 (미응시 = null 저장 → 평균 제외·경고 아님 / 키 없음 = 미입력 → 경고 /
+      // 평가별 통계 (미응시 = null 저장 → 평균 제외·경고 아님 / 키 없음 = 미입력 → 경고 /
       //             미수강(quizzesNoClass) = 점수는 있지만 평균 제외)
       const perQuiz = quizzesP.map((q) => {
         // 미수강 제외 + 2배 출제(half)는 절반 환산한 표시 점수 기준으로 통계
@@ -347,16 +347,16 @@ export function buildDirectorReport({
         };
       });
       for (const pq of perQuiz) {
-        if (!pq.scores.length) warn(`「${pq.q.unit}」 퀴즈 점수가 하나도 입력되지 않았습니다.`);
+        if (!pq.scores.length) warn(`「${pq.q.unit}」 평가 점수가 하나도 입력되지 않았습니다.`);
         else if (pq.missing.length) warn(`「${pq.q.unit}」 점수 미입력: ${pq.missing.join(", ")}`);
         if (pq.noshow.length) info(`「${pq.q.unit}」 미응시(결석 등): ${pq.noshow.join(", ")} — 평균에서 제외됩니다.`);
         if (pq.noclass.length) info(`「${pq.q.unit}」 미수강(수강 전 포함): ${pq.noclass.join(", ")} — 평균·통계에서 제외됩니다.`);
       }
 
-      // 단일 퀴즈면 통계 타일(학원 vs 전체), 복수면 퀴즈별 요약 줄
+      // 단일 평가면 통계 타일(학원 vs 전체), 복수면 평가별 요약 줄
       if (perQuiz.length === 1 && perQuiz[0].scores.length) {
         const pq = perQuiz[0];
-        const g = pq.q.stats; // 전체 평균 (같은 단원명 퀴즈의 전 학원 합산)
+        const g = pq.q.stats; // 전체 평균 (분류·단원명이 같은 평가의 전 학원 합산)
         quizChildren.push(
           el("div", { class: "rd-stats" }, [
             statTile("학원 평균", `${pq.avg}점`, `응시 ${pq.scores.length}명`),
@@ -403,7 +403,7 @@ export function buildDirectorReport({
       quizChildren.push(el("div", { class: "rd-table-wrap" }, [tbl]));
       if (perQuiz.some((pq) => pq.noclass.length)) {
         quizChildren.push(
-          el("p", { class: "rd-note", text: "※ 미수강 응시 (수업을 듣지 않고 본 퀴즈) — 평균·통계에서 제외" })
+          el("p", { class: "rd-note", text: "※ 미수강 응시 (수업을 듣지 않고 본 평가) — 평균·통계에서 제외" })
         );
       }
 
@@ -423,7 +423,7 @@ export function buildDirectorReport({
         }
       }
 
-      // 자동 분석: 퀴즈별 문장 — 전체 평균 대비 + 직전 단원 퀴즈 대비
+      // 자동 분석: 평가별 문장 — 전체 평균 대비 + 직전 평가 대비
       const sentences = [];
       for (const pq of perQuiz.filter((x) => x.scores.length)) {
         const g = pq.q.stats;
@@ -444,10 +444,10 @@ export function buildDirectorReport({
           const diff = round1(pq.avg - prev.avg);
           trend =
             diff > 0
-              ? ` 직전 퀴즈 「${prev.label}」(학원 평균 ${prev.avg}점)보다 ${diff}점 상승했습니다.`
+              ? ` 직전 평가 「${prev.label}」(학원 평균 ${prev.avg}점)보다 ${diff}점 상승했습니다.`
               : diff < 0
-                ? ` 직전 퀴즈 「${prev.label}」(학원 평균 ${prev.avg}점)보다 ${Math.abs(diff)}점 하락했습니다.`
-                : ` 직전 퀴즈 「${prev.label}」(학원 평균 ${prev.avg}점)과 동일합니다.`;
+                ? ` 직전 평가 「${prev.label}」(학원 평균 ${prev.avg}점)보다 ${Math.abs(diff)}점 하락했습니다.`
+                : ` 직전 평가 「${prev.label}」(학원 평균 ${prev.avg}점)과 동일합니다.`;
         }
         sentences.push(
           `「${pq.q.unit}」 응시 ${pq.scores.length}명 학원 평균 ${pq.avg}점(만점 ${pq.q.max || 100}점), 최고 ${pq.hi}점 · 최저 ${pq.lo}점, 편차 ${pq.hi - pq.lo}점.${vsAll}${trend}`
@@ -467,7 +467,7 @@ export function buildDirectorReport({
       quizChildren.push(el("h3", { class: "rd-h3", text: "단원별 학원 평균 추이" }));
       quizChildren.push(renderTrend(trendData, Math.max(100, ...allQuizzes.map((q) => dispMax(q)))));
     }
-    doc.appendChild(section(`지난 주 단원 퀴즈 결과 — ${weekDisplayLabel(P)}`, quizChildren));
+    doc.appendChild(section(`지난 주 평가 결과 — ${weekDisplayLabel(P)}`, quizChildren));
   }
 
   // ---------- ⑤ 공지사항 (W 기간 + 고정) ----------
@@ -521,7 +521,7 @@ function statTile(label, value, sub) {
   ]);
 }
 
-// 퀴즈의 "학원 평균" — 이 학원 학생 점수로 직접 계산.
+// 평가의 "학원 평균" — 이 학원 학생 점수로 직접 계산.
 // (quiz.stats는 두 학원 합산 전체 평균이므로 여기서 쓰지 않는다)
 function quizAvg(quiz, students) {
   const scores = students

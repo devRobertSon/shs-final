@@ -359,7 +359,40 @@ div.field > span {
   color: #fff;
   font-weight: 700;
 }
-/* 새 소식 배지 — 새 공지/퀴즈/리포트가 있는 탭에 표시 */
+/* 분류 선택 바 — 평가 탭 등 카드 안에서 쓰는 작은 칩 줄 (탭 바와 같은 언어, 한 단계 작게) */
+.subtabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 4px 0 10px;
+}
+.subtabs::-webkit-scrollbar {
+  display: none;
+}
+.subtab {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--page);
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.subtab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* 새 소식 배지 — 새 공지/평가/리포트가 있는 탭에 표시 */
 .tab .tab-dot {
   display: inline-block;
   width: 7px;

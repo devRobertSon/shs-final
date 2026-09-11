@@ -20,8 +20,10 @@ import {
   WEEK_TYPES,
   weekType,
   weekDisplayLabel,
+  QUIZ_CATEGORIES,
+  quizCategory,
 } from "./store.js";
-import { $, el, clear, toast, copyText, tabBar, setBusy, spinner, mdBlock } from "./ui.js";
+import { $, el, clear, toast, copyText, tabBar, setBusy, spinner, mdBlock, attachTabScroller } from "./ui.js";
 import { renderScoreChart, renderHistogram } from "./chart.js";
 import { showPdfOverlay } from "./pdfviewer.js";
 
@@ -207,8 +209,8 @@ function renderDashboard() {
     ])
   );
 
-  // 주차 선택 없음 — 숙제·출석·퀴즈 모두 전체 기록을 한 탭에서 보여준다 (최신 주차부터)
-  // 새 소식 배지: 마지막으로 열어본 이후 새로 발행된 공지/퀴즈/리포트가 있으면 탭에 ● 표시
+  // 주차 선택 없음 — 숙제·출석·평가 모두 전체 기록을 한 탭에서 보여준다 (최신 주차부터)
+  // 새 소식 배지: 마지막으로 열어본 이후 새로 발행된 공지/평가/리포트가 있으면 탭에 ● 표시
   const ids = newsIdSets();
   let seen = loadSeen();
   if (!seen) {
@@ -235,7 +237,7 @@ function renderDashboard() {
     }
   };
 
-  // 탭 순서 (사용자 지정): 리포트 → 과학 숙제 → 수학 숙제 → 자료실 → 출석·진도 → 공지사항 → 퀴즈 → 질문·문의
+  // 탭 순서 (사용자 지정): 리포트 → 과학 숙제 → 수학 숙제 → 자료실 → 출석·진도 → 공지사항 → 평가 → 질문·문의
   const tabDefs = [
     { id: "report", label: "리포트" },
     { id: "hw", label: "과학 숙제" },
@@ -243,7 +245,7 @@ function renderDashboard() {
     { id: "material", label: "자료실" },
     { id: "att", label: "출석·진도" },
     { id: "notice", label: "공지사항" },
-    { id: "quiz", label: "퀴즈" },
+    { id: "quiz", label: "평가" },
   ];
   // 질문·문의 탭은 학원이 관리 페이지에서 폼 주소를 등록한 경우에만 표시
   if ((session.academy.qnaUrl || "").trim()) tabDefs.push({ id: "qna", label: "질문·문의" });
@@ -439,113 +441,141 @@ function renderMathHomework(container) {
   container.appendChild(card);
 }
 
-// ---------- ② 퀴즈 (단원별) ----------
+// ---------- ② 평가 (구 '퀴즈' — 분류 선택 바 + 분류별 점수 추이·목록) ----------
+let selQuizCat = "sci"; // 선택한 평가 분류 — 탭을 오가도 세션 동안 유지
 function renderQuiz(container) {
   const { student, academy } = session;
-  const quizzes = sortQuizzes(academy.quizzes, academy.weeks);
+  const all = sortQuizzes(academy.quizzes, academy.weeks);
   const myScores = student.quizzes || {};
-  const card = el("div", { class: "card" }, [el("h2", { text: "단원별 퀴즈" })]);
-  if (!quizzes.length) {
-    card.appendChild(el("p", { class: "empty", text: "아직 등록된 퀴즈가 없습니다." }));
-    container.appendChild(card);
-    return;
-  }
-
-  // 요약: 두 타일 모두 '내가 (정규) 응시한 퀴즈' 기준으로 통일 — 내 평균과 전체 평균이
-  // 같은 퀴즈 집합을 비교하므로, 목록의 응시한 행들로 검산해도 일치한다.
-  // 미수강 응시(quizzesNoClass)는 점수가 있어도 두 평균 모두에서 제외.
   const noClass = student.quizzesNoClass || {};
-  const taken = quizzes.filter((q) => myScores[q.id] != null && !noClass[q.id]);
-  const ncCount = quizzes.filter((q) => myScores[q.id] != null && noClass[q.id]).length;
-  if (taken.length) {
-    // 2배 출제 퀴즈(half)는 점수·평균을 절반으로 환산해 다른 단원과 같은 기준으로 계산
-    const myAvg = round1(taken.reduce((a, q) => a + dispScore(q, myScores[q.id]), 0) / taken.length);
-    const withStats = taken.filter((q) => q.stats?.avg != null);
-    const allAvg = withStats.length
-      ? round1(withStats.reduce((a, q) => a + dispScore(q, q.stats.avg), 0) / withStats.length)
-      : null;
-    card.appendChild(
-      el("p", {
-        class: "hint",
-        text:
-          `지금까지 응시한 단원 퀴즈 ${taken.length}개 기준` +
-          (ncCount ? ` (미수강 응시 ${ncCount}개는 평균에서 제외)` : ""),
-      })
-    );
-    card.appendChild(
-      el("div", { class: "stat-row two" }, [
-        statTile("내 평균", String(myAvg), ""),
-        statTile("전체 평균", allAvg != null ? String(allAvg) : "–", ""),
-      ])
-    );
+  const card = el("div", { class: "card" }, [el("h2", { text: "평가" })]);
+
+  // 분류 선택 바 — 메뉴 바처럼 가로로 놓인 칩, 넘치면 좌우 화살표로 이동
+  const bar = el("div", { class: "subtabs" });
+  const body = el("div");
+  const btns = new Map();
+  for (const c of QUIZ_CATEGORIES) {
+    const b = el("button", { class: "subtab", text: c.label, onclick: () => select(c.id) });
+    btns.set(c.id, b);
+    bar.appendChild(b);
   }
+  card.appendChild(attachTabScroller(bar));
+  card.appendChild(body);
+  container.appendChild(card);
 
-  // 추이 그래프 (단원 응시 순, 만점 = 실제 퀴즈 만점 기준, x축 = 축약 단원명 줄바꿈 표시)
-  card.appendChild(el("h2", { text: "점수 추이" }));
-  const chartBox = el("div");
-  card.appendChild(chartBox);
-  renderScoreChart(chartBox, {
-    weeks: quizzes.map((q) => ({ id: q.id, label: unitShort(q.unit) })),
-    mine: quizzes.map((q) => (myScores[q.id] != null ? dispScore(q, myScores[q.id]) : null)),
-    avg: quizzes.map((q) => (q.stats?.avg != null ? dispScore(q, q.stats.avg) : null)),
-    yMax: Math.max(...quizzes.map((q) => dispMax(q))),
-  });
+  function select(catId) {
+    selQuizCat = catId;
+    for (const [id, b] of btns) {
+      b.classList.toggle("active", id === catId);
+      if (id === catId) b.scrollIntoView({ block: "nearest", inline: "center" });
+    }
+    renderCategory(catId);
+  }
+  select(QUIZ_CATEGORIES.some((c) => c.id === selQuizCat) ? selQuizCat : "sci");
 
-  // 주차 대신 날짜: 라벨의 괄호 안 날짜 → 수업일 범위 → 라벨 순으로 사용
-  const quizDateText = (q) => {
-    const w = (academy.weeks || []).find((x) => x.id === q.weekId);
-    if (!w) return "미정";
-    const m = (w.label || "").match(/\(([^)]+)\)/);
-    if (m) return m[1];
-    const ss = w.sessions || [];
-    const f = (d) => `${parseInt(d.slice(5, 7), 10)}/${parseInt(d.slice(8, 10), 10)}`;
-    if (ss.length) return ss.length > 1 ? `${f(ss[0])}~${f(ss[ss.length - 1])}` : f(ss[0]);
-    return shortLabel(w.label) || "미정";
-  };
+  function renderCategory(catId) {
+    clear(body);
+    const catLabel = QUIZ_CATEGORIES.find((c) => c.id === catId).label;
+    const quizzes = all.filter((q) => quizCategory(q) === catId);
+    if (!quizzes.length) {
+      body.appendChild(el("p", { class: "empty", text: `${catLabel} — 아직 등록된 평가가 없습니다.` }));
+      return;
+    }
 
-  // 전체 목록 (최신 순): 단원 | 내 점수 | 전체 평균 | 날짜
-  card.appendChild(el("h2", { text: "퀴즈 목록", style: "margin-top:16px" }));
-  const tbl = el("table", { class: "grid" });
-  tbl.appendChild(
-    el("tr", {}, [
-      el("th", { class: "name-cell", text: "단원" }),
-      el("th", { text: "내 점수" }),
-      el("th", { text: "전체 평균" }),
-      el("th", { text: "날짜" }),
-    ])
-  );
-  for (const q of [...quizzes].reverse()) {
-    const mine =
-      myScores[q.id] != null
-        ? el("td", { class: "num" }, [
-            `${dispScore(q, myScores[q.id])} / ${dispMax(q)}`,
-            noClass[q.id] ? el("span", { class: "nc-badge", text: "미수강" }) : null,
-          ])
-        : el("td", { class: "num", text: isNoShow(myScores, q.id) ? (noClass[q.id] ? "미수강" : "미응시") : "–" });
+    // 요약: 두 타일 모두 '내가 (정규) 응시한 평가' 기준으로 통일 — 내 평균과 전체 평균이
+    // 같은 평가 집합을 비교하므로, 목록의 응시한 행들로 검산해도 일치한다.
+    // 미수강 응시(quizzesNoClass)는 점수가 있어도 두 평균 모두에서 제외.
+    const taken = quizzes.filter((q) => myScores[q.id] != null && !noClass[q.id]);
+    const ncCount = quizzes.filter((q) => myScores[q.id] != null && noClass[q.id]).length;
+    if (taken.length) {
+      // 2배 출제 평가(half)는 점수·평균을 절반으로 환산해 다른 단원과 같은 기준으로 계산
+      const myAvg = round1(taken.reduce((a, q) => a + dispScore(q, myScores[q.id]), 0) / taken.length);
+      const withStats = taken.filter((q) => q.stats?.avg != null);
+      const allAvg = withStats.length
+        ? round1(withStats.reduce((a, q) => a + dispScore(q, q.stats.avg), 0) / withStats.length)
+        : null;
+      body.appendChild(
+        el("p", {
+          class: "hint",
+          text:
+            `지금까지 응시한 ${catLabel} ${taken.length}개 기준` +
+            (ncCount ? ` (미수강 응시 ${ncCount}개는 평균에서 제외)` : ""),
+        })
+      );
+      body.appendChild(
+        el("div", { class: "stat-row two" }, [
+          statTile("내 평균", String(myAvg), ""),
+          statTile("전체 평균", allAvg != null ? String(allAvg) : "–", ""),
+        ])
+      );
+    }
+
+    // 추이 그래프 (응시 순, 만점 = 실제 평가 만점 기준)
+    body.appendChild(el("h2", { text: "점수 추이" }));
+    const chartBox = el("div");
+    body.appendChild(chartBox);
+    renderScoreChart(chartBox, {
+      weeks: quizzes.map((q) => ({ id: q.id, label: unitShort(q.unit) })),
+      mine: quizzes.map((q) => (myScores[q.id] != null ? dispScore(q, myScores[q.id]) : null)),
+      avg: quizzes.map((q) => (q.stats?.avg != null ? dispScore(q, q.stats.avg) : null)),
+      yMax: Math.max(...quizzes.map((q) => dispMax(q))),
+    });
+
+    // 주차 대신 날짜: 라벨의 괄호 안 날짜 → 수업일 범위 → 라벨 순으로 사용
+    const quizDateText = (q) => {
+      const w = (academy.weeks || []).find((x) => x.id === q.weekId);
+      if (!w) return "미정";
+      const m = (w.label || "").match(/\(([^)]+)\)/);
+      if (m) return m[1];
+      const ss = w.sessions || [];
+      const f = (d) => `${parseInt(d.slice(5, 7), 10)}/${parseInt(d.slice(8, 10), 10)}`;
+      if (ss.length) return ss.length > 1 ? `${f(ss[0])}~${f(ss[ss.length - 1])}` : f(ss[0]);
+      return shortLabel(w.label) || "미정";
+    };
+
+    // 전체 목록 (최신 순): 단원 | 내 점수 | 전체 평균 | 날짜
+    body.appendChild(el("h2", { text: "평가 목록", style: "margin-top:16px" }));
+    const tbl = el("table", { class: "grid" });
     tbl.appendChild(
       el("tr", {}, [
-        el("td", { class: "name-cell", text: unitShort(q.unit) }),
-        mine,
-        el("td", { class: "num", text: q.stats?.avg != null ? String(dispScore(q, q.stats.avg)) : "–" }),
-        el("td", { text: quizDateText(q) }),
+        el("th", { class: "name-cell", text: "단원" }),
+        el("th", { text: "내 점수" }),
+        el("th", { text: "전체 평균" }),
+        el("th", { text: "날짜" }),
       ])
     );
+    for (const q of [...quizzes].reverse()) {
+      const mine =
+        myScores[q.id] != null
+          ? el("td", { class: "num" }, [
+              `${dispScore(q, myScores[q.id])} / ${dispMax(q)}`,
+              noClass[q.id] ? el("span", { class: "nc-badge", text: "미수강" }) : null,
+            ])
+          : el("td", { class: "num", text: isNoShow(myScores, q.id) ? (noClass[q.id] ? "미수강" : "미응시") : "–" });
+      tbl.appendChild(
+        el("tr", {}, [
+          el("td", { class: "name-cell", text: unitShort(q.unit) }),
+          mine,
+          el("td", { class: "num", text: q.stats?.avg != null ? String(dispScore(q, q.stats.avg)) : "–" }),
+          el("td", { text: quizDateText(q) }),
+        ])
+      );
+    }
+    body.appendChild(el("div", { class: "table-wrap" }, [tbl]));
+    if (quizzes.some((q) => q.half)) {
+      body.appendChild(
+        el("p", { class: "hint", text: "문제를 2배로 낸 평가(만점 2배)는 점수·평균을 절반으로 환산해 다른 단원과 같은 기준으로 표시합니다." })
+      );
+    }
+    if (ncCount) {
+      body.appendChild(
+        el("p", {
+          class: "hint",
+          text: "미수강 = 수업을 듣지 않은 상태에서 응시한 평가입니다. 점수는 기록되지만 내 평균과 전체 평균 계산에는 들어가지 않습니다.",
+        })
+      );
+    }
   }
-  card.appendChild(el("div", { class: "table-wrap" }, [tbl]));
-  if (quizzes.some((q) => q.half)) {
-    card.appendChild(
-      el("p", { class: "hint", text: "문제를 2배로 낸 퀴즈(만점 2배)는 점수·평균을 절반으로 환산해 다른 단원과 같은 기준으로 표시합니다." })
-    );
-  }
-  if (ncCount) {
-    card.appendChild(
-      el("p", {
-        class: "hint",
-        text: "미수강 = 수업을 듣지 않은 상태에서 응시한 퀴즈입니다. 점수는 기록되지만 내 평균과 전체 평균 계산에는 들어가지 않습니다.",
-      })
-    );
-  }
-  container.appendChild(card);
 }
 
 function round1(v) {
@@ -638,7 +668,7 @@ function fileRow({ title, metaText, entry, key }) {
 
 // ---------- ③ 리포트 (단원별) ----------
 // 수업(주차) 최신순 — 수업 리포트(weekReports, 면담·면접 포함)와
-// 그 수업 퀴즈의 단원 리포트(quizReports)를 한 목록으로 보여준다.
+// 그 수업 평가의 단원 리포트(quizReports)를 한 목록으로 보여준다.
 function renderReport(container) {
   const { student, academy } = session;
   const quizzes = sortQuizzes(academy.quizzes, academy.weeks);
@@ -663,15 +693,15 @@ function renderReport(container) {
           title: q.unit,
           sub: shortLabel(weekDisplayLabel(w)),
           rep: qReports[q.id],
-          pdfTitle: "📊 퀴즈 분석 리포트",
+          pdfTitle: "📊 평가 분석 리포트",
         });
       }
     }
   }
-  // 주차가 없는(미정) 퀴즈의 리포트는 맨 아래
+  // 주차가 없는(미정) 평가의 리포트는 맨 아래
   for (const q of [...quizzes].reverse().filter((x) => !weeks.some((w) => w.id === x.weekId))) {
     if (has(qReports[q.id])) {
-      items.push({ title: q.unit, sub: "주차 미정", rep: qReports[q.id], pdfTitle: "📊 퀴즈 분석 리포트" });
+      items.push({ title: q.unit, sub: "주차 미정", rep: qReports[q.id], pdfTitle: "📊 평가 분석 리포트" });
     }
   }
   if (!items.length) {
@@ -804,7 +834,7 @@ function renderQna(container) {
     el("p", {
       class: "hint",
       text:
-        "수업·퀴즈·숙제에 대해 궁금한 점을 남겨 주세요. 남긴 질문은 선생님만 볼 수 있으며, " +
+        "수업·평가·숙제에 대해 궁금한 점을 남겨 주세요. 남긴 질문은 선생님만 볼 수 있으며, " +
         "여러 학생에게 도움이 되는 답변은 공지사항 탭에 올라갑니다.",
     })
   );
@@ -822,7 +852,7 @@ function renderQna(container) {
 }
 
 // ==================== 선생님(열람) 대시보드 ====================
-// 관리 권한 없음 — 소속 학원의 출석 현황·퀴즈 점수 분포(익명)·공지만 열람.
+// 관리 권한 없음 — 소속 학원의 출석 현황·평가 점수 분포(익명)·공지만 열람.
 
 function renderTeacherDashboard() {
   const { teacher, academy } = session;
@@ -855,7 +885,7 @@ function renderTeacherDashboard() {
     [
       { id: "att", label: "출석 현황" },
       { id: "hw", label: "숙제" },
-      { id: "scores", label: "퀴즈 성적" },
+      { id: "scores", label: "평가 성적" },
       { id: "reports", label: "리포트" },
       { id: "notice", label: "공지사항" },
     ],
@@ -1165,7 +1195,7 @@ function renderTeacherMathHomework(container) {
 }
 
 // ---------- 개별 리포트 열람 (전달사항 + PDF 유무) ----------
-// 수업(주차) 최신순 — 수업 리포트 카드 다음에 그 수업 퀴즈의 단원 리포트 카드.
+// 수업(주차) 최신순 — 수업 리포트 카드 다음에 그 수업 평가의 단원 리포트 카드.
 function renderTeacherReports(container) {
   const { teacher, academy } = session;
   const quizzes = sortQuizzes(academy.quizzes, academy.weeks);
@@ -1223,21 +1253,21 @@ function renderTeacherReports(container) {
   }
 }
 
-// ---------- 퀴즈 성적 (수업 날짜 선택 → 위: 점수 분포 / 아래: 학생별 성적) ----------
-// 기본 선택 = 직전 수업 (마지막 수업의 하나 전). 그 수업에 퀴즈가 없으면
-// 퀴즈가 있는 가장 가까운 이전 수업으로 내려간다.
+// ---------- 평가 성적 (수업 날짜 선택 → 위: 점수 분포 / 아래: 학생별 성적) ----------
+// 기본 선택 = 직전 수업 (마지막 수업의 하나 전). 그 수업에 평가가 없으면
+// 평가가 있는 가장 가까운 이전 수업으로 내려간다.
 function renderTeacherScores(container, weeks, state, rerender) {
   const { teacher, academy } = session;
   const allQuizzes = sortQuizzes(academy.quizzes, academy.weeks);
   const rows = teacher.snapshot?.scores || [];
-  const card = el("div", { class: "card" }, [el("h2", { text: "퀴즈 성적" })]);
+  const card = el("div", { class: "card" }, [el("h2", { text: "평가 성적" })]);
   if (!allQuizzes.length || !rows.length) {
-    card.appendChild(el("p", { class: "empty", text: "아직 등록된 퀴즈가 없습니다." }));
+    card.appendChild(el("p", { class: "empty", text: "아직 등록된 평가가 없습니다." }));
     container.appendChild(card);
     return;
   }
 
-  // 선택지: 수업 날짜(최신부터) → 수업일 없는 퀴즈 주차 → 주차 미정
+  // 선택지: 수업 날짜(최신부터) → 수업일 없는 평가 주차 → 주차 미정
   const sess = teacherSessions(weeks);
   const quizzesOfWeek = (w) => allQuizzes.filter((q) => q.weekId === w.id);
   const groups = [];
@@ -1258,7 +1288,7 @@ function renderTeacherScores(container, weeks, state, rerender) {
     return;
   }
 
-  // 기본값: 직전 수업 → 퀴즈가 없으면 이전 수업으로 fallback
+  // 기본값: 직전 수업 → 평가가 없으면 이전 수업으로 fallback
   if (!state.scoreKey || !groups.some((g) => g.key === state.scoreKey)) {
     const lastIdx = lastPastSessionIdx(sess);
     let pick = null;
@@ -1284,19 +1314,19 @@ function renderTeacherScores(container, weeks, state, rerender) {
   });
   card.appendChild(el("div", { class: "week-select-row" }, [dateSel]));
   card.appendChild(
-    el("p", { class: "hint", text: "선택한 수업 날짜에 본 단원 퀴즈의 점수만 표시됩니다." })
+    el("p", { class: "hint", text: "선택한 수업 날짜에 본 평가의 점수만 표시됩니다." })
   );
 
   const quizzes = selected.quizzes;
   container.appendChild(card); // 날짜 선택 카드
   if (!quizzes.length) {
-    card.appendChild(el("p", { class: "empty", text: "이 수업에 등록된 단원 퀴즈가 없습니다." }));
+    card.appendChild(el("p", { class: "empty", text: "이 수업에 등록된 평가가 없습니다." }));
     return;
   }
 
-  // 퀴즈 점수 분포 (위)
+  // 평가 점수 분포 (위)
   const distBox = el("div", { class: "t-dist" });
-  distBox.appendChild(el("h2", { class: "t-dist-title", text: "퀴즈 점수 분포" }));
+  distBox.appendChild(el("h2", { class: "t-dist-title", text: "평가 점수 분포" }));
   renderQuizDistCards(distBox, quizzes);
   container.appendChild(distBox);
 
@@ -1351,20 +1381,20 @@ function renderTeacherScores(container, weeks, state, rerender) {
   }
   if (quizzes.some((q) => q.half)) {
     scoreCard.appendChild(
-      el("p", { class: "hint", text: "2배 출제 퀴즈는 점수·평균·분포를 절반으로 환산해 표시합니다." })
+      el("p", { class: "hint", text: "2배 출제 평가는 점수·평균·분포를 절반으로 환산해 표시합니다." })
     );
   }
   container.appendChild(scoreCard);
 }
 
-// 스냅샷에서 특정 퀴즈의 점수 배열 (분포용) — 미수강 응시 제외, 2배 출제는 절반 환산
+// 스냅샷에서 특정 평가의 점수 배열 (분포용) — 미수강 응시 제외, 2배 출제는 절반 환산
 function quizScoreValues(q) {
   return (session.teacher.snapshot?.scores || [])
     .map((r) => (r.noClass?.[q.id] ? null : dispScore(q, r.byQuiz?.[q.id])))
     .filter((v) => v != null);
 }
 
-// 퀴즈 점수 분포 카드 (익명 히스토그램)
+// 평가 점수 분포 카드 (익명 히스토그램)
 function renderQuizDistCards(container, quizzes) {
   const { academy } = session;
   for (const q of quizzes) {
