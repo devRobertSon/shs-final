@@ -582,8 +582,11 @@ function academyEntry(fileId = S.selAcademy) {
 function academyBlob(fileId = S.selAcademy) {
   return S.academies.get(fileId);
 }
+// 관리 화면의 학생 나열 순서는 항상 이름 가나다순 (사용자 지정)
 function activeStudentsOf(academyFileId) {
-  return S.roster.students.filter((s) => s.academyFileId === academyFileId && s.active !== false);
+  return S.roster.students
+    .filter((s) => s.academyFileId === academyFileId && s.active !== false)
+    .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
 function selectedWeek() {
   const blob = academyBlob();
@@ -991,7 +994,9 @@ function renderStudentsTab(container) {
 
   for (const a of S.roster.academies) {
     card.appendChild(el("h3", { text: a.name, style: "font-size:15px;margin-top:14px" }));
-    const students = S.roster.students.filter((s) => s.academyFileId === a.fileId);
+    const students = S.roster.students
+      .filter((s) => s.academyFileId === a.fileId)
+      .sort((x, y) => x.name.localeCompare(y.name, "ko"));
     if (!students.length) card.appendChild(el("p", { class: "empty", text: "학생이 없습니다." }));
     for (const st of students) {
       card.appendChild(
@@ -1150,7 +1155,8 @@ function renderStudentsTab(container) {
               name: s.name,
               code: s.code,
               academyName: academyEntry(s.academyFileId)?.name || "",
-            }));
+            }))
+            .sort((a, b) => a.academyName.localeCompare(b.academyName, "ko") || a.name.localeCompare(b.name, "ko"));
           printCodeCards(entries, S.meta.site.title, S.roster.siteURL);
         },
       }),
@@ -2257,8 +2263,9 @@ function renderReportsTab(container) {
           (weekQuizzes.length ? "" : " (이 수업에 등록된 평가 없음)"),
     })
   );
-  // 학생 전원을 이름순으로 한 페이지에 나열 — 한 명씩 넘기지 않고 바로 입력한다
-  const students = [...activeStudentsOf(S.selAcademy)].sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  // 학생 전원을 이름순으로 한 페이지에 나열 — 한 명씩 넘기지 않고 바로 입력한다.
+  // 드랍 학생은 드랍 해제 전까지 리포트 입력 칸에 나오지 않는다 (사용자 지정).
+  const students = activeStudentsOf(S.selAcademy).filter((s) => !s.dropped);
   if (!students.length) {
     card.appendChild(el("p", { class: "empty", text: "학생이 없습니다." }));
     container.appendChild(card);
@@ -2291,7 +2298,7 @@ function renderReportsTab(container) {
     el("p", {
       class: "hint",
       text:
-        "학생 전원을 이름순으로 한 페이지에서 입력합니다 — 입력하는 즉시 임시 저장되고, '발행'해야 사이트에 반영됩니다. " +
+        "학생 전원을 이름순으로 한 페이지에서 입력합니다 (드랍 학생은 드랍 해제 전까지 제외) — 입력하는 즉시 임시 저장되고, '발행'해야 사이트에 반영됩니다. " +
         "전달 사항에는 마크다운(**굵게**, - 목록, [이름](https://링크))을 쓸 수 있고, " +
         "PDF는 그 학생의 접속 코드로만 열리도록 개별 암호화되어 올라갑니다.",
     })
