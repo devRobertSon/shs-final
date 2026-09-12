@@ -442,7 +442,7 @@ function renderMathHomework(container) {
 }
 
 // ---------- ② 평가 (구 '퀴즈' — 분류 선택 바 + 분류별 점수 추이·목록) ----------
-let selQuizCat = "counsel-human"; // 선택한 평가 분류(기본 면담평가 - 인성) — 탭을 오가도 세션 동안 유지
+let selQuizCat = "counsel-human"; // 선택한 평가 분류(기본 면담-인성) — 탭을 오가도 세션 동안 유지
 function renderQuiz(container) {
   const { student, academy } = session;
   const all = sortQuizzes(academy.quizzes, academy.weeks);

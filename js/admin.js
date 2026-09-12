@@ -1726,7 +1726,7 @@ function renderWeeklyTab(container) {
   // ⑦ 이번 주 평가(범위) 등록
   const qCard = el("div", { class: "card" }, [el("h2", { text: `⑦ 이번 주 평가 등록 — ${week.label}` })]);
   qCard.appendChild(
-    el("p", { class: "hint", text: "이번 주에 볼 평가(과학 퀴즈·면담평가·면접평가)를 등록해 두면, 다음 주 ③에서 점수를 입력하게 됩니다." })
+    el("p", { class: "hint", text: "이번 주에 볼 평가(과학 퀴즈·면담·면접·다듬기)를 등록해 두면, 다음 주 ③에서 점수를 입력하게 됩니다." })
   );
   const thisQuizzes = (academyBlob().quizzes || []).filter((q) => q.weekId === week.id);
   if (!thisQuizzes.length) qCard.appendChild(el("p", { class: "empty", text: "이번 주차에 등록된 평가가 없습니다." }));
