@@ -17,7 +17,7 @@ import {
   normalizePassword,
   b64encode,
 } from "./crypto.js";
-import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, isoWeekIdAfter, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER, isNoShow, isNA, triState, mathCell, mathDatesForWeek, WEEK_TYPES, weekType, weekDisplayLabel, prevWeekOfType, QUIZ_CATEGORIES, quizCategory, quizCategoryLabel } from "./store.js";
+import { fetchJSON, fetchBytes, metaExists, sortWeeks, sortQuizzes, weekLabelOf, isoWeekId, isoWeekIdAfter, toYMD, homeworkShareText, formatBytes, ATTENDANCE, ATTENDANCE_ORDER, isNoShow, isNA, triState, mathCell, mathDatesForWeek, WEEK_TYPES, weekType, weekDisplayLabel, prevWeekOfType, QUIZ_CATEGORIES, quizCategory, quizCategoryLabel, reportFiles } from "./store.js";
 import { $, el, clear, toast, confirmModal, copyText, setBusy, mdBlock, attachTabScroller } from "./ui.js";
 import { runWizard, createStudent, emptyStudentBlob, emptyAcademyBlob, printCodeCards } from "./setup.js";
 import { buildDirectorReport } from "./report.js";
@@ -735,9 +735,9 @@ function deleteQuiz(quiz) {
     }
     const rep = sBlob.quizReports?.[quiz.id];
     if (rep) {
-      if (rep.pdf) {
-        if (S.pendingUploads.has(rep.pdf.path)) S.pendingUploads.delete(rep.pdf.path);
-        else S.pendingDeletes.add(rep.pdf.path);
+      for (const f of reportFiles(rep)) {
+        if (S.pendingUploads.has(f.path)) S.pendingUploads.delete(f.path);
+        else S.pendingDeletes.add(f.path);
       }
       delete sBlob.quizReports[quiz.id];
       touched = true;
@@ -924,9 +924,9 @@ function manageWeeks() {
                 const sb = S.students.get(st.fileId);
                 const rep = sb?.weekReports?.[w.id];
                 if (!rep) continue;
-                if (rep.pdf) {
-                  if (S.pendingUploads.has(rep.pdf.path)) S.pendingUploads.delete(rep.pdf.path);
-                  else S.pendingDeletes.add(rep.pdf.path);
+                for (const f of reportFiles(rep)) {
+                  if (S.pendingUploads.has(f.path)) S.pendingUploads.delete(f.path);
+                  else S.pendingDeletes.add(f.path);
                 }
                 delete sb.weekReports[w.id];
                 markStudent(st.fileId);
@@ -1187,13 +1187,13 @@ async function reissueCode(st) {
     //    하나라도 실패하면 아무것도 바꾸지 않는다 (구 키 유실 방지)
     const gathered = [];
     for (const rep of [...Object.values(blob.quizReports || {}), ...Object.values(blob.weekReports || {})]) {
-      const pdf = rep.pdf;
-      if (!pdf) continue;
-      const pending = S.pendingUploads.get(pdf.path);
-      const bytes = pending
-        ? pending.bytes
-        : new Uint8Array(await decryptBytes(oldKey, await fetchBytes(pdf.path)));
-      gathered.push({ pdf, wasPending: !!pending, bytes });
+      for (const pdf of reportFiles(rep)) {
+        const pending = S.pendingUploads.get(pdf.path);
+        const bytes = pending
+          ? pending.bytes
+          : new Uint8Array(await decryptBytes(oldKey, await fetchBytes(pdf.path)));
+        gathered.push({ pdf, wasPending: !!pending, bytes });
+      }
     }
     // 구(주차별) 리포트 PDF는 더 이상 표시되지 않으므로 정리 삭제만 예약
     const legacyDeletes = [];
@@ -1253,8 +1253,8 @@ async function deleteStudent(st) {
     // 단원 리포트 + 수업 리포트 + 구(주차별) 리포트 PDF 모두 정리
     const blob = S.students.get(st.fileId);
     const pdfPaths = [
-      ...Object.values(blob?.quizReports || {}).map((r) => r.pdf?.path),
-      ...Object.values(blob?.weekReports || {}).map((r) => r.pdf?.path),
+      ...Object.values(blob?.quizReports || {}).flatMap((r) => reportFiles(r).map((f) => f.path)),
+      ...Object.values(blob?.weekReports || {}).flatMap((r) => reportFiles(r).map((f) => f.path)),
       ...Object.values(blob?.weeks || {}).map((wd) => wd.reportPdf?.path),
     ].filter(Boolean);
     for (const p of pdfPaths) {
@@ -2292,7 +2292,7 @@ function renderReportsTab(container) {
   const cleanupRep = (st) => {
     const map = repMapOf(S.students.get(st.fileId));
     const rep = map[repKey];
-    if (rep && !rep.pdf && !rep.note) delete map[repKey];
+    if (rep && !reportFiles(rep).length && !rep.note) delete map[repKey];
   };
 
   card.appendChild(
@@ -2301,7 +2301,7 @@ function renderReportsTab(container) {
       text:
         "학생 전원을 이름순으로 한 페이지에서 입력합니다 (드랍 학생은 드랍 해제 전까지 제외) — 입력하는 즉시 임시 저장되고, '발행'해야 사이트에 반영됩니다. " +
         "전달 사항에는 마크다운(**굵게**, - 목록, [이름](https://링크))을 쓸 수 있고, " +
-        "PDF는 그 학생의 접속 코드로만 열리도록 개별 암호화되어 올라갑니다.",
+        "첨부 파일은 그 학생의 접속 코드로만 열리도록 개별 암호화되어 올라가며, 학생마다 여러 개 첨부할 수 있습니다.",
     })
   );
 
@@ -2333,30 +2333,32 @@ function renderReportsTab(container) {
     block.appendChild(ta);
     block.appendChild(count);
 
-    // 분석 PDF (학생 본인 키로 암호화 — 그 학생 코드로만 열림)
+    // 첨부 파일 (학생 본인 키로 암호화 — 그 학생 코드로만 열림). 여러 개 첨부 가능.
     const pdfBox = el("div");
-    const removePdf = () => {
+    const removeFile = (f) => {
       const rep = repOf(st);
-      const pdf = rep?.pdf;
-      if (!pdf) return;
-      if (S.pendingUploads.has(pdf.path)) S.pendingUploads.delete(pdf.path);
-      else S.pendingDeletes.add(pdf.path);
-      delete rep.pdf;
+      if (!rep) return;
+      if (S.pendingUploads.has(f.path)) S.pendingUploads.delete(f.path);
+      else S.pendingDeletes.add(f.path);
+      if (rep.pdf === f) delete rep.pdf;
+      else {
+        rep.pdfs = (rep.pdfs || []).filter((x) => x !== f);
+        if (!rep.pdfs.length) delete rep.pdfs;
+      }
       cleanupRep(st);
       markStudent(st.fileId);
     };
     const renderPdf = () => {
       clear(pdfBox);
-      const pdf = repOf(st)?.pdf;
-      if (pdf) {
+      for (const f of reportFiles(repOf(st))) {
         pdfBox.appendChild(
           el("div", { class: "material" }, [
             el("div", { class: "m-info" }, [
               el("div", {
                 class: "m-title",
-                text: `📊 ${pdf.origName}${S.pendingUploads.has(pdf.path) ? " (발행 대기)" : ""}`,
+                text: `📊 ${f.origName}${S.pendingUploads.has(f.path) ? " (발행 대기)" : ""}`,
               }),
-              el("div", { class: "m-meta", text: formatBytes(pdf.size) }),
+              el("div", { class: "m-meta", text: formatBytes(f.size) }),
             ]),
             el("div", { class: "m-actions" }, [
               el("button", {
@@ -2364,13 +2366,13 @@ function renderReportsTab(container) {
                 text: "삭제",
                 onclick: async () => {
                   const ok = await confirmModal({
-                    title: "분석 PDF 삭제",
-                    body: `${st.name} 학생의 '${pdf.origName}'을(를) 삭제할까요?`,
+                    title: "첨부 파일 삭제",
+                    body: `${st.name} 학생의 '${f.origName}'을(를) 삭제할까요?`,
                     okText: "삭제",
                     danger: true,
                   });
                   if (!ok) return;
-                  removePdf();
+                  removeFile(f);
                   renderPdf();
                 },
               }),
@@ -2378,29 +2380,34 @@ function renderReportsTab(container) {
           ])
         );
       }
-      const fileIn = el("input", { type: "file", accept: "application/pdf,.pdf", "aria-label": `${st.name} PDF 선택` });
+      const fileIn = el("input", { type: "file", multiple: "", "aria-label": `${st.name} 파일 선택` });
       const addBtn = el("button", {
         class: "btn btn-small btn-primary",
-        text: pdf ? "PDF 교체" : "PDF 추가",
+        text: "+ 파일 추가",
         onclick: async () => {
-          const f = fileIn.files[0];
-          if (!f) return toast("파일을 선택해 주세요.", "error");
-          if (f.size > 90 * 1024 * 1024)
-            return toast("90MB를 넘는 파일은 올릴 수 없습니다 (GitHub 제한).", "error");
-          if (f.size > 25 * 1024 * 1024)
-            toast("파일이 큽니다 — 업로드와 열람이 느릴 수 있습니다.", "error");
-          const bytes = new Uint8Array(await f.arrayBuffer());
-          removePdf(); // 교체 시 기존 것 정리 (대기 중 → 맵 제거 / 발행됨 → 삭제 예약)
-          const path = `data/m/${randomHexId(16)}.bin`;
-          ensureRep(st).pdf = {
-            path,
-            origName: f.name,
-            size: f.size,
-            mime: f.type || "application/pdf",
-          };
-          S.pendingUploads.set(path, { bytes, studentFileId: st.fileId });
+          const files = [...fileIn.files];
+          if (!files.length) return toast("파일을 선택해 주세요.", "error");
+          for (const f of files) {
+            if (f.size > 90 * 1024 * 1024)
+              return toast(`'${f.name}' — 90MB를 넘는 파일은 올릴 수 없습니다 (GitHub 제한).`, "error");
+            if (f.size > 25 * 1024 * 1024)
+              toast(`'${f.name}' — 파일이 큽니다. 업로드와 열람이 느릴 수 있습니다.`, "error");
+          }
+          for (const f of files) {
+            const bytes = new Uint8Array(await f.arrayBuffer());
+            const path = `data/m/${randomHexId(16)}.bin`;
+            const rep = ensureRep(st);
+            rep.pdfs = rep.pdfs || [];
+            rep.pdfs.push({
+              path,
+              origName: f.name,
+              size: f.size,
+              mime: f.type || "application/pdf",
+            });
+            S.pendingUploads.set(path, { bytes, studentFileId: st.fileId });
+          }
           markStudent(st.fileId);
-          toast(`${st.name} 학생 PDF가 추가되었습니다. '발행'해야 반영됩니다.`, "ok");
+          toast(`${st.name} 학생 파일 ${files.length}개가 추가되었습니다. '발행'해야 반영됩니다.`, "ok");
           renderPdf();
         },
       });
@@ -3081,11 +3088,12 @@ function buildTeacherSnapshot(academyFileId) {
     const rows = [];
     for (const st of students) {
       const rep = repOf(st);
-      if (!rep || (!rep.note && !rep.pdf)) continue;
+      const files = reportFiles(rep);
+      if (!rep || (!rep.note && !files.length)) continue;
       rows.push({
         name: st.name,
         ...(rep.note ? { note: rep.note } : {}),
-        ...(rep.pdf ? { pdfName: rep.pdf.origName } : {}),
+        ...(files.length ? { pdfNames: files.map((f) => f.origName) } : {}),
       });
     }
     return rows;
