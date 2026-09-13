@@ -1904,6 +1904,7 @@ function mathHomeworkCard({ dates = null, title = "수학 숙제 체크", manage
         type: "number",
         class: "math-num",
         min: "0",
+        step: "any", // 소수점 입력 허용 (예: 7.5문제)
         placeholder: "X",
         "aria-label": `${st.name} ${fmtD(d)} 해온 문제 수`,
       });
@@ -1919,7 +1920,7 @@ function mathHomeworkCard({ dates = null, title = "수학 숙제 체크", manage
       };
       numIn.addEventListener("change", () => {
         sb.mathHomework = sb.mathHomework || {};
-        const n = parseInt(numIn.value, 10);
+        const n = parseFloat(numIn.value);
         if (Number.isFinite(n) && n >= 0) sb.mathHomework[d] = n;
         else delete sb.mathHomework[d]; // 빈칸 = X 안 해옴
         paint();
