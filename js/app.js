@@ -210,7 +210,7 @@ function renderDashboard() {
   );
 
   // 주차 선택 없음 — 숙제·출석·평가 모두 전체 기록을 한 탭에서 보여준다 (최신 주차부터)
-  // 새 소식 배지: 마지막으로 열어본 이후 새로 발행된 공지/평가/리포트가 있으면 탭에 ● 표시
+  // 새 소식 배지: 마지막으로 열어본 이후 새로 발행된 공지/평가/리포트/자료가 있으면 탭에 ● 표시
   const ids = newsIdSets();
   let seen = loadSeen();
   if (!seen) {
@@ -254,7 +254,7 @@ function renderDashboard() {
 
   clear(app).appendChild(root);
   tabs.select("report");
-  for (const t of ["notice", "quiz", "report"]) tabs.setBadge(t, hasNew(t));
+  for (const t of ["notice", "quiz", "report", "material"]) tabs.setBadge(t, hasNew(t));
 }
 
 // ---------- 새 소식(배지) 상태 — 기기별 localStorage, 무작위 ID만 저장 ----------
@@ -266,6 +266,7 @@ function newsIdSets() {
   return {
     notice: (academy.notices || []).map((n) => String(n.id)),
     quiz: Object.keys(student.quizzes || {}),
+    material: (academy.materials || []).map((m) => String(m.id)),
     report: [
       ...Object.entries(student.quizReports || {})
         .filter(([, r]) => r && (r.pdf || r.note))
