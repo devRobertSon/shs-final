@@ -22,6 +22,7 @@ import {
   weekDisplayLabel,
   QUIZ_CATEGORIES,
   quizCategory,
+  reportFiles,
 } from "./store.js";
 import { $, el, clear, toast, copyText, tabBar, setBusy, spinner, mdBlock, attachTabScroller } from "./ui.js";
 import { renderScoreChart, renderHistogram } from "./chart.js";
@@ -269,11 +270,11 @@ function newsIdSets() {
     material: (academy.materials || []).map((m) => String(m.id)),
     report: [
       ...Object.entries(student.quizReports || {})
-        .filter(([, r]) => r && (r.pdf || r.note))
+        .filter(([, r]) => r && (reportFiles(r).length || r.note))
         .map(([id]) => id),
       // 수업 리포트 — 주차 id와 퀴즈 id가 겹치지 않게 접두어를 붙여 저장
       ...Object.entries(student.weekReports || {})
-        .filter(([, r]) => r && (r.pdf || r.note))
+        .filter(([, r]) => r && (reportFiles(r).length || r.note))
         .map(([id]) => `w:${id}`),
     ],
   };
@@ -676,7 +677,7 @@ function renderReport(container) {
   const qReports = student.quizReports || {};
   const wReports = student.weekReports || {};
   const card = el("div", { class: "card" }, [el("h2", { text: "개별 리포트" })]);
-  const has = (rep) => rep && (rep.pdf || rep.note);
+  const has = (rep) => rep && (reportFiles(rep).length || rep.note);
   const weeks = sortWeeks(academy.weeks);
   const items = []; // {title, sub, rep, pdfTitle}
   for (const w of [...weeks].reverse()) {
@@ -715,12 +716,12 @@ function renderReport(container) {
           el("span", { class: "unit-week", text: it.sub }),
         ]),
       ]);
-      if (it.rep.pdf) {
+      for (const f of reportFiles(it.rep)) {
         sec.appendChild(
           fileRow({
             title: it.pdfTitle,
-            metaText: [it.rep.pdf.origName, formatBytes(it.rep.pdf.size)].filter(Boolean).join(" · "),
-            entry: it.rep.pdf,
+            metaText: [f.origName, formatBytes(f.size)].filter(Boolean).join(" · "),
+            entry: f,
             key: session.studentKey,
           })
         );
@@ -1244,7 +1245,9 @@ function renderTeacherReports(container) {
         el("div", { class: "t-report" }, [
           el("div", { class: "t-report-head" }, [
             el("span", { class: "t-report-name", text: r.name }),
-            r.pdfName ? el("span", { class: "t-pdf-chip", text: `📎 ${r.pdfName}` }) : null,
+            ...(r.pdfNames || (r.pdfName ? [r.pdfName] : [])).map((n) =>
+              el("span", { class: "t-pdf-chip", text: `📎 ${n}` })
+            ),
           ]),
           r.note ? mdBlock(r.note, "report-body md-body t-note-md") : null,
         ])
