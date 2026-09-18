@@ -230,18 +230,48 @@ textarea {
   line-height: 1.5;
   resize: vertical;
 }
-/* 셀렉트 — 탭 칩과 같은 언어의 둥근 알약 모양 (관리·선생님·학생 공용) */
 select {
   appearance: none;
   -webkit-appearance: none;
   background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%231d54a8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 14px center;
-  border-radius: 999px;
-  padding-left: 16px;
-  padding-right: 36px;
+  background-position: right 12px center;
+  padding-right: 34px;
   font-weight: 600;
   color: var(--ink);
+}
+/* 펼침 목록(옵션 리스트) — 셀렉트 커스터마이즈를 지원하는 브라우저(크롬 계열)에서
+   둥근 카드 모양으로. 미지원 브라우저(사파리 등)는 기본 목록 그대로. */
+@supports (appearance: base-select) {
+  select,
+  ::picker(select) {
+    appearance: base-select;
+  }
+  select::picker-icon {
+    display: none; /* 기존의 가는 화살표(배경 SVG)를 그대로 유지 */
+  }
+  ::picker(select) {
+    margin-top: 6px;
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    background: var(--surface);
+    box-shadow: 0 10px 28px rgba(20, 40, 90, 0.18);
+    padding: 6px;
+  }
+  select option {
+    padding: 9px 12px;
+    border-radius: 9px;
+    font-size: 15px;
+  }
+  select option:hover,
+  select option:focus-visible {
+    background: var(--accent-wash);
+  }
+  select option:checked {
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
 }
 input:focus,
 select:focus,
