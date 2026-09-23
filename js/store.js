@@ -163,6 +163,11 @@ export function isoWeekId(date) {
 //            quizReports = {평가ID: {pdf?:{path,origName,size,mime}, pdfs?:[같은 형식…], note?:string}}
 //              — 단원(평가) 리포트. 첨부 파일은 pdf(구형 단일) + pdfs(추가분 배열) 합집합 (reportFiles 헬퍼)
 //            weekReports = {주차ID: {pdf?, pdfs?, note?}} — 수업 리포트 (평가 없는 면담·면접 수업 포함, 형식 동일)
+//              방문 수업 리포트는 자기 학원 주차와 겹치지 않게 "g:호스트학원fileId:주차ID" 키를 쓰고
+//              {guestLabel, guestAcademy}가 함께 저장된다 (포털 표시용 — 호스트 blob은 복호화 불가)
+//            guest = {att:{날짜:출석코드}, days:[{date,academy,weekLabel,progress,att}],
+//                     quizzes:[{id,unit,category,max,half?,stats,dateText,academy}]}
+//              — 방문 수업(타원 수업일) 데이터. days/quizzes는 발행 때 관리 페이지가 복사하는 스냅샷.
 // 한 주차에 여러 평가가 있을 수 있다. 정렬은 응시 주차 순 → 같은 주차는 등록 순.
 
 // 평가 분류 — 표시 순서 그대로 학생 화면의 선택 바에 나온다.

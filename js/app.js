@@ -447,7 +447,9 @@ function renderMathHomework(container) {
 let selQuizCat = "counsel-human"; // 선택한 평가 분류(기본 면담-인성) — 탭을 오가도 세션 동안 유지
 function renderQuiz(container) {
   const { student, academy } = session;
-  const all = sortQuizzes(academy.quizzes, academy.weeks);
+  // 방문 평가(다른 학원에서 응시)는 발행 시 복사된 정의를 뒤에 붙인다 — 같은 분류의 평균·그래프·목록에 포함
+  const guestDefs = (student.guest?.quizzes || []).map((q) => ({ ...q, _guest: true }));
+  const all = [...sortQuizzes(academy.quizzes, academy.weeks), ...guestDefs];
   const myScores = student.quizzes || {};
   const noClass = student.quizzesNoClass || {};
   const card = el("div", { class: "card" }, [el("h2", { text: "평가" })]);
@@ -525,6 +527,7 @@ function renderQuiz(container) {
 
     // 주차 대신 날짜: 라벨의 괄호 안 날짜 → 수업일 범위 → 라벨 순으로 사용
     const quizDateText = (q) => {
+      if (q._guest) return `${q.dateText} (방문·${q.academy})`;
       const w = (academy.weeks || []).find((x) => x.id === q.weekId);
       if (!w) return "미정";
       const m = (w.label || "").match(/\(([^)]+)\)/);
@@ -706,6 +709,22 @@ function renderReport(container) {
       items.push({ title: q.unit, sub: "주차 미정", rep: qReports[q.id], pdfTitle: "📊 평가 분석 리포트" });
     }
   }
+  // 방문 수업의 리포트 — 방문 평가 리포트(평가ID 기준) + 방문 수업 리포트(g: 키)
+  for (const def of student.guest?.quizzes || []) {
+    if (has(qReports[def.id])) {
+      items.push({ title: def.unit, sub: `방문 · ${def.academy}`, rep: qReports[def.id], pdfTitle: "📊 평가 분석 리포트" });
+    }
+  }
+  for (const [k, rep] of Object.entries(wReports)) {
+    if (k.startsWith("g:") && has(rep)) {
+      items.push({
+        title: rep.guestLabel || "방문 수업",
+        sub: `방문 · ${rep.guestAcademy || ""}`,
+        rep,
+        pdfTitle: "📊 리포트 파일",
+      });
+    }
+  }
   if (!items.length) {
     card.appendChild(el("p", { class: "empty", text: "아직 작성된 리포트가 없습니다." }));
   } else {
@@ -826,6 +845,30 @@ function renderAttendance(container, weeks) {
     card.appendChild(block);
   }
   container.appendChild(card);
+
+  // 방문 수업 — 다른 학원 수업에 참석한 날의 출석·진도 (발행 시 복사된 스냅샷)
+  const gdays = session.student.guest?.days || [];
+  if (gdays.length) {
+    const gcard = el("div", { class: "card" }, [el("h2", { text: "방문 수업" })]);
+    gcard.appendChild(el("p", { class: "hint", text: "다른 학원 수업에 참석한 날의 출석과 진도입니다." }));
+    for (const g of [...gdays].reverse()) {
+      const info = ATTENDANCE[g.att];
+      const block = el("div", { class: "week-block" }, [
+        el("div", { class: "wb-head" }, [
+          el("span", { class: "wb-label", text: `${g.academy}${g.weekLabel ? ` · ${g.weekLabel}` : ""}` }),
+        ]),
+        el("div", { class: "att-row" }, [
+          el("div", { class: `att-chip ${info ? info.cls : ""}` }, [
+            el("span", { class: "d", text: g.date.slice(5).replace("-", "/") }),
+            el("span", { class: "s", text: info ? info.label : "–" }),
+          ]),
+        ]),
+      ]);
+      if (g.progress) block.appendChild(el("div", { class: "progress-text wb-progress", text: `진도 · ${g.progress}` }));
+      gcard.appendChild(block);
+    }
+    container.appendChild(gcard);
+  }
 }
 
 // ---------- ⑦ 질문·문의 (구글 폼 연동 — 학원이 폼 주소를 등록한 경우에만 탭 표시) ----------
