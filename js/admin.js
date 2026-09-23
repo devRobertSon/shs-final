@@ -588,6 +588,112 @@ function activeStudentsOf(academyFileId) {
     .filter((s) => s.academyFileId === academyFileId && s.active !== false)
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
+
+// ---------- 방문 수업 (타원 수업일) ----------
+// 한 학원 학생이 특정 날짜만 다른 학원 수업을 듣는 경우.
+// roster 학생 항목: guestDays = [{date:"YYYY-MM-DD", academy: 방문 학원 fileId}]
+// 학생 blob: guest = { att: {date: 출석코드},                — 방문일 출석 (입력 원본)
+//                      days/quizzes: 발행 시 스냅샷 (syncGuestData) — 포털 표시용 }
+function guestDaysOf(st, hostAcademyId) {
+  return (st.guestDays || []).filter((g) => g.academy === hostAcademyId).map((g) => g.date);
+}
+// 이 학원의 주어진 날짜들 중 하루라도 방문하는 타 학원 학생 (이름순, 드랍·비활성 제외)
+function guestStudentsForDates(hostAcademyId, dates) {
+  const set = new Set(dates || []);
+  return S.roster.students
+    .filter((s) => s.academyFileId !== hostAcademyId && s.active !== false && !s.dropped)
+    .filter((s) => guestDaysOf(s, hostAcademyId).some((d) => set.has(d)))
+    .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+}
+function guestAttOf(blob) {
+  blob.guest = blob.guest || {};
+  blob.guest.att = blob.guest.att || {};
+  return blob.guest.att;
+}
+function guestRowName(st) {
+  return `${st.name} (방문·${academyEntry(st.academyFileId)?.name || ""})`;
+}
+
+// 방문 수업일 관리 모달 — 학생 관리에서 사용
+function editGuestDays(st) {
+  const others = S.roster.academies.filter((a) => a.fileId !== st.academyFileId);
+  if (!others.length) return toast("다른 학원이 없습니다.", "error");
+  st.guestDays = st.guestDays || [];
+  const list = el("div");
+  const dateIn = el("input", { type: "date" });
+  const aSel = el("select");
+  for (const a of others) aSel.appendChild(el("option", { value: a.fileId, text: a.name }));
+  const overlay = el("div", { class: "modal-overlay" });
+  const paint = () => {
+    clear(list);
+    if (!st.guestDays.length) {
+      list.appendChild(el("p", { class: "empty", text: "지정된 방문 수업일이 없습니다." }));
+      return;
+    }
+    for (const g of [...st.guestDays].sort((a, b) => a.date.localeCompare(b.date))) {
+      list.appendChild(
+        el("div", { class: "student-row" }, [
+          el("span", { class: "s-name", text: `${g.date} — ${academyEntry(g.academy)?.name || "?"}` }),
+          el("span", { class: "s-actions" }, [
+            el("button", {
+              class: "btn btn-small btn-danger",
+              text: "삭제",
+              onclick: () => {
+                st.guestDays = st.guestDays.filter((x) => x !== g);
+                // 그 날짜의 방문 출석 기록도 정리
+                const blob = S.students.get(st.fileId);
+                if (blob?.guest?.att && g.date in blob.guest.att) {
+                  delete blob.guest.att[g.date];
+                  markStudent(st.fileId);
+                }
+                markRoster();
+                paint();
+              },
+            }),
+          ]),
+        ])
+      );
+    }
+  };
+  paint();
+  overlay.appendChild(
+    el("div", { class: "modal" }, [
+      el("h3", { text: `${st.name} — 방문 수업일` }),
+      el("p", {
+        class: "hint",
+        text:
+          "지정한 날짜에는 이 학생이 해당 학원의 출석 체크·평가 점수·리포트 대상에 함께 나타나고, " +
+          "학생 화면에는 그날의 출석·진도와 평가·리포트가 표시됩니다 ('발행' 후 반영).",
+      }),
+      list,
+      el("div", { class: "toolbar", style: "margin-top:10px" }, [
+        dateIn,
+        aSel,
+        el("button", {
+          class: "btn btn-small btn-primary",
+          text: "+ 추가",
+          onclick: () => {
+            const d = dateIn.value;
+            if (!d) return toast("날짜를 선택해 주세요.", "error");
+            if (st.guestDays.some((g) => g.date === d && g.academy === aSel.value))
+              return toast("이미 지정된 날짜입니다.", "error");
+            st.guestDays.push({ date: d, academy: aSel.value });
+            markRoster();
+            paint();
+          },
+        }),
+      ]),
+      el("p", {
+        class: "hint",
+        text: "방문 학원의 수업일이 아닌 날짜를 지정하면 출석·평가 대상에는 나타나지 않고 기록만 남습니다.",
+      }),
+      el("div", { class: "modal-actions" }, [
+        el("button", { class: "btn btn-primary", text: "닫기", onclick: () => { overlay.remove(); renderTab(); } }),
+      ]),
+    ])
+  );
+  document.body.appendChild(overlay);
+}
 function selectedWeek() {
   const blob = academyBlob();
   if (!blob) return null;
@@ -725,9 +831,10 @@ function deleteQuiz(quiz) {
   const blob = academyBlob();
   blob.quizzes = (blob.quizzes || []).filter((q) => q.id !== quiz.id);
   markAcademy(S.selAcademy);
+  // 평가ID는 전 학원 고유 — 방문 학생의 점수·리포트까지 정리하도록 전체 학생을 훑는다
   for (const st of S.roster.students) {
-    if (st.academyFileId !== S.selAcademy) continue;
     const sBlob = S.students.get(st.fileId);
+    if (!sBlob) continue;
     let touched = false;
     if (sBlob.quizzes && quiz.id in sBlob.quizzes) {
       delete sBlob.quizzes[quiz.id];
@@ -919,17 +1026,21 @@ function manageWeeks() {
               });
               if (!ok) return;
               blob.weeks = blob.weeks.filter((x) => x.id !== w.id);
-              // 이 주차의 수업 리포트 정리 (PDF 파일 삭제 예약 포함)
-              for (const st of S.roster.students.filter((s) => s.academyFileId === S.selAcademy)) {
+              // 이 주차의 수업 리포트 정리 (PDF 파일 삭제 예약 포함) — 방문 학생 리포트(g:키) 포함
+              for (const st of S.roster.students) {
                 const sb = S.students.get(st.fileId);
-                const rep = sb?.weekReports?.[w.id];
-                if (!rep) continue;
-                for (const f of reportFiles(rep)) {
-                  if (S.pendingUploads.has(f.path)) S.pendingUploads.delete(f.path);
-                  else S.pendingDeletes.add(f.path);
+                if (!sb?.weekReports) continue;
+                const keys = st.academyFileId === S.selAcademy ? [w.id] : [`g:${S.selAcademy}:${w.id}`];
+                for (const key of keys) {
+                  const rep = sb.weekReports[key];
+                  if (!rep) continue;
+                  for (const f of reportFiles(rep)) {
+                    if (S.pendingUploads.has(f.path)) S.pendingUploads.delete(f.path);
+                    else S.pendingDeletes.add(f.path);
+                  }
+                  delete sb.weekReports[key];
+                  markStudent(st.fileId);
                 }
-                delete sb.weekReports[w.id];
-                markStudent(st.fileId);
               }
               normalizeWeekIds(S.selAcademy); // 삭제로 빈 번호가 남지 않게 당겨서 재정렬
               selId = null; // 최신 주차로 되돌아감
@@ -1011,6 +1122,12 @@ function renderStudentsTab(container) {
               onclick: () => printCodeCards([{ name: st.name, code: st.code, academyName: a.name }], S.meta.site.title, S.roster.siteURL),
             }),
             el("button", { class: "btn btn-small", text: "코드 재발급", onclick: () => reissueCode(st) }),
+            el("button", {
+              class: "btn btn-small",
+              text: (st.guestDays || []).length ? `방문(${st.guestDays.length})` : "방문",
+              title: "다른 학원 수업을 듣는 날짜 지정",
+              onclick: () => editGuestDays(st),
+            }),
             el("button", { class: "btn btn-small", text: st.dropped ? "드랍 해제" : "드랍", onclick: () => toggleDropped(st) }),
             el("button", {
               class: "btn btn-small",
@@ -1391,7 +1508,11 @@ function scoresCard(quiz, { title = "평가 점수 입력" } = {}) {
     );
   }
 
-  const students = activeStudentsOf(S.selAcademy);
+  // 소속 학생 + 이 주차의 방문 학생 (방문 학생은 이름에 표시)
+  const own = activeStudentsOf(S.selAcademy);
+  const qWeek = (academyBlob().weeks || []).find((w) => w.id === quiz.weekId);
+  const guests = qWeek ? guestStudentsForDates(S.selAcademy, qWeek.sessions || []) : [];
+  const students = [...own, ...guests.map((g) => ({ ...g, name: guestRowName(g) }))];
 
   // TSV 붙여넣기
   const tsv = el("textarea", {
@@ -1501,7 +1622,7 @@ function scoresCard(quiz, { title = "평가 점수 입력" } = {}) {
   updateAvg();
 
   // 이 주차 출석부에 결석·공결이 있는 학생 안내 (자동 처리는 하지 않음 — 보강 응시 가능)
-  const absentish = students
+  const absentish = own
     .filter((st) => {
       const att = S.students.get(st.fileId)?.weeks?.[quiz.weekId]?.attendance || {};
       return Object.values(att).some((c) => c === "A" || c === "X");
@@ -1624,7 +1745,8 @@ function recomputeStats() {
     for (const q of blob?.quizzes || []) {
       const key = quizCategory(q) + "|" + norm(q.unit);
       const arr = pool.get(key) || [];
-      for (const st of activeStudentsOf(a.fileId)) {
+      // 평가ID는 전 학원에서 고유하므로 전체 학생을 훑는다 — 방문 학생 점수도 포함
+      for (const st of S.roster.students.filter((x) => x.active !== false)) {
         const sBlob = S.students.get(st.fileId);
         const v = sBlob?.quizzes?.[q.id];
         // 미수강 응시(quizzesNoClass)는 점수가 있어도 전체 평균에서 제외
@@ -2143,20 +2265,10 @@ function attendanceCard(week, { title = "출석 체크" } = {}) {
       ...week.sessions.map((d) => el("th", { text: d.slice(5).replace("-", "/") })),
     ])
   );
-  for (const st of students) {
-    const blob = S.students.get(st.fileId);
-    const row = el("tr", {}, [el("td", { class: "name-cell", text: st.name })]);
-    for (const d of week.sessions) {
+  // 셀 하나 — get/set만 다르게 해서 소속 학생·방문 학생이 같은 UI를 쓴다
+  const attCell = (name, d, get, set) => {
       const td = el("td");
       let open = false; // 선택된 칸을 다시 눌러 선택기를 연 상태
-      const get = () => blob.weeks?.[week.id]?.attendance?.[d] || "";
-      const set = (code) => {
-        blob.weeks[week.id] = blob.weeks[week.id] || {};
-        blob.weeks[week.id].attendance = blob.weeks[week.id].attendance || {};
-        if (code) blob.weeks[week.id].attendance[d] = code;
-        else delete blob.weeks[week.id].attendance[d];
-        markStudent(st.fileId);
-      };
       const paint = () => {
         clear(td);
         const code = get();
@@ -2184,7 +2296,7 @@ function attendanceCard(week, { title = "출석 체크" } = {}) {
                 class: `att-opt att-cell ${o.cls}`,
                 text: o.label,
                 title: o.label,
-                "aria-label": `${st.name} ${d} ${o.label}`,
+                "aria-label": `${name} ${d} ${o.label}`,
                 onclick: () => {
                   set(c);
                   open = false;
@@ -2199,7 +2311,7 @@ function attendanceCard(week, { title = "출석 체크" } = {}) {
                 class: "att-opt",
                 text: "–",
                 title: "지우기",
-                "aria-label": `${st.name} ${d} 지우기`,
+                "aria-label": `${name} ${d} 지우기`,
                 onclick: () => {
                   set("");
                   open = false;
@@ -2212,7 +2324,52 @@ function attendanceCard(week, { title = "출석 체크" } = {}) {
         }
       };
       paint();
-      row.appendChild(td);
+      return td;
+  };
+  for (const st of students) {
+    const blob = S.students.get(st.fileId);
+    const row = el("tr", {}, [el("td", { class: "name-cell", text: st.name })]);
+    for (const d of week.sessions) {
+      row.appendChild(
+        attCell(
+          st.name,
+          d,
+          () => blob.weeks?.[week.id]?.attendance?.[d] || "",
+          (code) => {
+            blob.weeks[week.id] = blob.weeks[week.id] || {};
+            blob.weeks[week.id].attendance = blob.weeks[week.id].attendance || {};
+            if (code) blob.weeks[week.id].attendance[d] = code;
+            else delete blob.weeks[week.id].attendance[d];
+            markStudent(st.fileId);
+          }
+        )
+      );
+    }
+    tbl.appendChild(row);
+  }
+  // 방문 학생 — 지정된 방문 날짜의 칸만 활성화, 출석은 학생 blob의 guest.att에 저장
+  for (const st of guestStudentsForDates(S.selAcademy, week.sessions)) {
+    const blob = S.students.get(st.fileId);
+    const gdays = new Set(guestDaysOf(st, S.selAcademy));
+    const row = el("tr", {}, [el("td", { class: "name-cell", text: guestRowName(st) })]);
+    for (const d of week.sessions) {
+      if (!gdays.has(d)) {
+        row.appendChild(el("td", { class: "num" }, [el("span", { class: "t-dash", text: "–" })]));
+        continue;
+      }
+      row.appendChild(
+        attCell(
+          st.name,
+          d,
+          () => blob.guest?.att?.[d] || "",
+          (code) => {
+            const att = guestAttOf(blob);
+            if (code) att[d] = code;
+            else delete att[d];
+            markStudent(st.fileId);
+          }
+        )
+      );
     }
     tbl.appendChild(row);
   }
@@ -2266,15 +2423,23 @@ function renderReportsTab(container) {
   );
   // 학생 전원을 이름순으로 한 페이지에 나열 — 한 명씩 넘기지 않고 바로 입력한다.
   // 드랍 학생은 드랍 해제 전까지 리포트 입력 칸에 나오지 않는다 (사용자 지정).
-  const students = activeStudentsOf(S.selAcademy).filter((s) => !s.dropped);
+  // 이 수업 날짜에 방문하는 타 학원 학생도 뒤에 함께 나온다 (이름에 방문 표시).
+  const guestSet = new Set(guestStudentsForDates(S.selAcademy, week.sessions || []).map((g) => g.fileId));
+  const students = [
+    ...activeStudentsOf(S.selAcademy).filter((s) => !s.dropped),
+    ...guestStudentsForDates(S.selAcademy, week.sessions || []),
+  ];
   if (!students.length) {
     card.appendChild(el("p", { class: "empty", text: "학생이 없습니다." }));
     container.appendChild(card);
     return;
   }
 
-  // 이 대상의 리포트 저장 맵 + 키 (퀴즈 연결 여부에 따라 달라진다)
-  const repKey = quiz ? quiz.id : week.id;
+  // 이 대상의 리포트 저장 맵 + 키 (퀴즈 연결 여부·방문 여부에 따라 달라진다)
+  // 평가 연결 → quizReports[평가ID] (평가ID는 전 학원 고유라 방문 학생도 그대로)
+  // 수업 리포트 → 소속 학생은 weekReports[주차ID],
+  //              방문 학생은 자기 학원 주차와 겹치지 않게 weekReports["g:호스트학원:주차ID"]
+  const repKeyOf = (st) => (quiz ? quiz.id : guestSet.has(st.fileId) ? `g:${S.selAcademy}:${week.id}` : week.id);
   const repMapOf = (blob) => {
     if (quiz) {
       blob.quizReports = blob.quizReports || {};
@@ -2283,16 +2448,22 @@ function renderReportsTab(container) {
     blob.weekReports = blob.weekReports || {};
     return blob.weekReports;
   };
-  const repOf = (st) => repMapOf(S.students.get(st.fileId))[repKey];
+  const repOf = (st) => repMapOf(S.students.get(st.fileId))[repKeyOf(st)];
   const ensureRep = (st) => {
     const map = repMapOf(S.students.get(st.fileId));
-    map[repKey] = map[repKey] || {};
-    return map[repKey];
+    const key = repKeyOf(st);
+    map[key] = map[key] || {};
+    // 방문 수업 리포트 — 포털 표시용 라벨을 함께 저장 (학생은 호스트 학원 blob을 못 읽음)
+    if (!quiz && guestSet.has(st.fileId)) {
+      map[key].guestLabel = weekDisplayLabel(week);
+      map[key].guestAcademy = academyEntry().name;
+    }
+    return map[key];
   };
   const cleanupRep = (st) => {
     const map = repMapOf(S.students.get(st.fileId));
-    const rep = map[repKey];
-    if (rep && !reportFiles(rep).length && !rep.note) delete map[repKey];
+    const rep = map[repKeyOf(st)];
+    if (rep && !reportFiles(rep).length && !rep.note) delete map[repKeyOf(st)];
   };
 
   card.appendChild(
@@ -2307,7 +2478,7 @@ function renderReportsTab(container) {
 
   for (const st of students) {
     const block = el("div", { class: "report-student" });
-    block.appendChild(el("h4", { text: st.name }));
+    block.appendChild(el("h4", { text: guestSet.has(st.fileId) ? guestRowName(st) : st.name }));
 
     // 전달 사항 — 입력 즉시 임시 저장
     const count = el("div", { class: "char-count" });
@@ -3111,6 +3282,65 @@ function buildTeacherSnapshot(academyFileId) {
   return { attendance, scores, homework, reports, weekReports, math };
 }
 
+// 방문 수업 스냅샷 — 방문일별 {출석, 학원명, 주차 라벨, 진도}와
+// 방문 평가 정의(단원·분류·만점·전체 평균)를 학생 blob(guest)에 복사한다.
+// 발행 때마다 다시 만들어 항상 최신 상태를 유지한다.
+function syncGuestData() {
+  const weekOfDate = (aBlob, d) => (aBlob?.weeks || []).find((w) => (w.sessions || []).includes(d));
+  for (const st of S.roster.students) {
+    const blob = S.students.get(st.fileId);
+    if (!blob) continue;
+    const gds = (st.guestDays || []).filter((g) => g.academy !== st.academyFileId);
+    const before = JSON.stringify(blob.guest ?? null);
+    if (!gds.length) {
+      if (blob.guest) {
+        delete blob.guest;
+        S.dirtyStudents.add(st.fileId);
+      }
+      continue;
+    }
+    const keep = new Set(gds.map((g) => g.date));
+    const att = {};
+    for (const [d, c] of Object.entries(blob.guest?.att || {})) if (keep.has(d)) att[d] = c;
+    const days = [];
+    const qdefs = [];
+    const qseen = new Set();
+    for (const g of [...gds].sort((a, b) => a.date.localeCompare(b.date))) {
+      const aEntry = S.roster.academies.find((a) => a.fileId === g.academy);
+      const aBlob = S.academies.get(g.academy);
+      if (!aEntry || !aBlob) continue;
+      const w = weekOfDate(aBlob, g.date);
+      days.push({
+        date: g.date,
+        academy: aEntry.name,
+        weekLabel: w ? weekDisplayLabel(w) : "",
+        progress: (w?.progress || "").trim(),
+        att: att[g.date] || null,
+      });
+      if (!w) continue;
+      for (const q of aBlob.quizzes || []) {
+        if (q.weekId !== w.id || qseen.has(q.id)) continue;
+        const hasScore = blob.quizzes && q.id in blob.quizzes;
+        const hasReport = blob.quizReports && blob.quizReports[q.id];
+        if (!hasScore && !hasReport) continue; // 기록이 있는 평가만 학생 화면에 보인다
+        qseen.add(q.id);
+        qdefs.push({
+          id: q.id,
+          unit: q.unit,
+          category: quizCategory(q),
+          max: q.max,
+          ...(q.half ? { half: true } : {}),
+          stats: q.stats || null,
+          dateText: g.date.slice(5).replace("-", "/"),
+          academy: aEntry.name,
+        });
+      }
+    }
+    blob.guest = { att, days, quizzes: qdefs };
+    if (JSON.stringify(blob.guest) !== before) S.dirtyStudents.add(st.fileId);
+  }
+}
+
 // mode: "api" → 변경분만(base64) + 삭제 목록 / "zip" → 전체 파일(bytes)
 async function buildPublishFiles(mode) {
   const enc = new TextEncoder();
@@ -3128,10 +3358,13 @@ async function buildPublishFiles(mode) {
     }
     blob.name = st.name;
   }
-  // 2) 전체 평균 재계산 (분류·단원명이 같은 평가는 전 학원 학생 합산)
+  // 2) 전체 평균 재계산 (분류·단원명이 같은 평가는 전 학원 학생 합산 — 방문 응시 포함)
   recomputeStats();
+  // 3) 방문 수업 스냅샷 동기화 — 방문일의 출석·진도·평가 정의(최신 평균 포함)를 학생 blob에 복사
+  //    (학생은 호스트 학원 blob을 복호화할 수 없으므로, 표시에 필요한 조각만 넣어 준다)
+  syncGuestData();
 
-  // 3) meta 갱신
+  // 4) meta 갱신
   // 커스텀 도메인에서도 접속 통계 핑이 동작하도록 저장소 경로를 기록
   // (핑 URL에 원래 들어 있던 값이라 새로운 정보 노출은 아님 — 저장소 자체가 public)
   if (S.roster.repo?.owner && S.roster.repo?.name) {
